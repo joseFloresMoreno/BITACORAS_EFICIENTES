@@ -190,6 +190,9 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                        <button type="button" class="btn btn-warning" id="btnRecalcularRuta">
+                            ♻️ Recalcular Ruta
+                        </button>
                         <button type="button" class="btn btn-primary" id="btnCompartirRuta">
                             📲 Copiar Link para Compartir
                         </button>
@@ -379,6 +382,8 @@
                         <td>${fecha}</td>
                         <td><span class="badge bg-info">0</span></td>
                         <td>
+                            <button class="btn btn-sm btn-warning" title="Recalcular" onclick="recalcularRutaRapido(${ruta.id})">♻️</button>
+                            <button class="btn btn-sm btn-success" title="Copiar link" onclick="copiarLinkRapido(${ruta.id})">📲</button>
                             <button class="btn btn-sm btn-info" onclick="verDetalles(${ruta.id})">👁️ Ver</button>
                             <button class="btn btn-sm btn-danger" onclick="eliminarRuta(${ruta.id})">🗑️ Eliminar</button>
                         </td>
@@ -387,6 +392,55 @@
                 });
             } catch (error) {
                 mostrarAlerta('Error al cargar rutas: ' + error.message, 'danger');
+            }
+        }
+
+        // Recalcular ruta sin abrir modal
+        async function recalcularRutaRapido(rutaId) {
+            try {
+                const btn = event.target;
+                const textOriginal = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '⏳';
+
+                const response = await fetch(`${API_URL}/rutas/${rutaId}/recalcular`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Error al recalcular');
+                }
+
+                const resultado = await response.json();
+                console.log('✅ Ruta recalculada:', resultado);
+                mostrarAlerta('✅ Ruta recalculada exitosamente', 'success');
+                cargarRutas();
+            } catch (error) {
+                mostrarAlerta('❌ Error: ' + error.message, 'danger');
+            } finally {
+                const btn = event.target;
+                btn.disabled = false;
+                btn.innerHTML = '♻️';
+            }
+        }
+
+        // Copiar link de ruta sin abrir modal
+        async function copiarLinkRapido(rutaId) {
+            try {
+                const btn = event.target;
+                const response = await fetch(`${API_URL}/rutas/${rutaId}`);
+                const ruta = await response.json();
+
+                if (ruta.url_maps) {
+                    navigator.clipboard.writeText(ruta.url_maps);
+                    mostrarAlerta('📋 Link copiado al portapapeles', 'success');
+                } else {
+                    mostrarAlerta('⚠️ Esta ruta no tiene URL disponible', 'warning');
+                }
+            } catch (error) {
+                mostrarAlerta('❌ Error: ' + error.message, 'danger');
             }
         }
 
@@ -443,6 +497,108 @@
                 console.error(error);
             }
         }
+
+        // Recalcular ruta cuando cambien las coordenadas de clientes
+        async function recalcularRuta() {
+            if (!rutaActual || !rutaActual.id) {
+                mostrarAlerta('❌ No hay ruta seleccionada', 'danger');
+                return;
+            }
+
+            try {
+                // Mostrar indicador de carga
+                const btn = document.getElementById('btnRecalcularRuta');
+                const btnCompartir = document.getElementById('btnCompartirRuta');
+                const textOriginal = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Recalculando...';
+                btnCompartir.disabled = true;
+
+                console.log(`♻️ Recalculando ruta ${rutaActual.id}...`);
+
+                const response = await fetch(`${API_URL}/rutas/${rutaActual.id}/recalcular`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Error al recalcular ruta');
+                }
+
+                const resultado = await response.json();
+                console.log('✅ Ruta recalculada:', resultado);
+
+                // Actualizar rutaActual con nuevos datos
+                rutaActual = {
+                    ...rutaActual,
+                    paradas: resultado.paradas,
+                    url_maps: resultado.url_maps
+                };
+
+                // Actualizar contenido del modal sin abrir uno nuevo
+                let html = `
+                    <h6>Ruta: ${rutaActual.nombre}</h6>
+                    <p><strong>Móvil:</strong> ${rutaActual.movil_numero ? rutaActual.movil_numero + ' - ' + rutaActual.conductor : 'Sin asignar'}</p>
+                    <p><strong>Total Distancia:</strong> ${rutaActual.paradas ? rutaActual.paradas.reduce((sum, p) => sum + parseFloat(p.distancia_km || 0), 0).toFixed(2) : '0'} km</p>
+                    
+                    <h6 class="mt-3">Paradas Optimizadas:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr><th>#</th><th>Cliente</th><th>Dirección</th><th>Distancia (km)</th><th>Duración (min)</th></tr>
+                            </thead>
+                            <tbody>
+                                ${rutaActual.paradas ? rutaActual.paradas.map(p => `
+                                    <tr>
+                                        <td>${p.orden}</td>
+                                        <td>${p.razon_social}</td>
+                                        <td>${p.direccion}</td>
+                                        <td>${p.distancia_km}</td>
+                                        <td>${p.duracion_min}</td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="5">Sin paradas</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    ${rutaActual.url_maps ? `
+                        <div class="alert alert-info mt-3">
+                            <strong>🗺️ Link de Google Maps disponible</strong><br>
+                            <small class="text-break"><code>${rutaActual.url_maps}</code></small>
+                        </div>
+                    ` : `
+                        <div class="alert alert-warning mt-3">
+                            <strong>⚠️ No hay URL para esta ruta</strong>
+                        </div>
+                    `}
+                `;
+                
+                document.getElementById('detallesRutaContent').innerHTML = html;
+
+                // Restaurar botones
+                btn.disabled = false;
+                btn.innerHTML = textOriginal;
+                btnCompartir.disabled = false;
+
+                mostrarAlerta('✅ Ruta recalculada exitosamente. Distancias y orden optimizado.', 'success');
+                
+                // Recargar tabla de rutas para mostrar cambios
+                cargarRutas();
+            } catch (error) {
+                mostrarAlerta('❌ Error al recalcular: ' + error.message, 'danger');
+                console.error(error);
+
+                // Restaurar botón
+                const btn = document.getElementById('btnRecalcularRuta');
+                const btnCompartir = document.getElementById('btnCompartirRuta');
+                btn.disabled = false;
+                btn.innerHTML = '♻️ Recalcular Ruta';
+                btnCompartir.disabled = false;
+            }
+        }
+
+        document.getElementById('btnRecalcularRuta').addEventListener('click', recalcularRuta);
 
         document.getElementById('btnCompartirRuta').addEventListener('click', () => {
             if (rutaActual && rutaActual.url_maps) {

@@ -125,6 +125,7 @@ function generarURLGoogleMaps(puntoInicio, paradas) {
 
 // Función para generar URL de Google Maps compatible con móviles (Android e iOS)
 // Esta URL funciona en apps de mensajería como WhatsApp y envíos por SMS
+// RUTA CERRADA: Sale del punto de inicio, pasa por todos los clientes, y regresa al punto de inicio
 function generarURLGoogleMapsMobile(puntoInicio, paradas) {
   if (paradas.length === 0) {
     throw new Error('Se requieren al menos una parada');
@@ -137,12 +138,12 @@ function generarURLGoogleMapsMobile(puntoInicio, paradas) {
   // Punto de origen
   url += `&origin=${puntoInicio.latitud},${puntoInicio.longitud}`;
   
-  // Destino final (última parada)
-  url += `&destination=${paradas[paradas.length - 1].latitud},${paradas[paradas.length - 1].longitud}`;
+  // Destino final: Volvemos al punto de origen (ruta cerrada)
+  url += `&destination=${puntoInicio.latitud},${puntoInicio.longitud}`;
   
-  // Waypoints (paradas intermedias)
-  if (paradas.length > 1) {
-    const waypoints = paradas.slice(0, -1).map(p => `${p.latitud},${p.longitud}`).join('|');
+  // Waypoints (todos los clientes en orden de visita)
+  if (paradas.length > 0) {
+    const waypoints = paradas.map(p => `${p.latitud},${p.longitud}`).join('|');
     url += `&waypoints=${waypoints}`;
   }
   

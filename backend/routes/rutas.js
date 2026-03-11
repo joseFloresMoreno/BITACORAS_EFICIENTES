@@ -238,200 +238,165 @@ router.delete('/:id', (req, res) => {
   });
 });
 
-module.exports = router;
-
-// POST - Crear nueva ruta
-router.post('/', (req, res) => {
-  const { nombre, punto_inicio_latitud, punto_inicio_longitud, punto_inicio_nombre, descripcion } = req.body;
-  
-  if (!nombre || punto_inicio_latitud === undefined || punto_inicio_longitud === undefined) {
-    res.status(400).json({ error: 'Nombre y coordenadas del punto de inicio son requeridas' });
-    return;
-  }
-
-  db.run(
-    `INSERT INTO rutas (nombre, punto_inicio_latitud, punto_inicio_longitud, punto_inicio_nombre, descripcion) 
-     VALUES (?, ?, ?, ?, ?)`,
-    [nombre, punto_inicio_latitud, punto_inicio_longitud, punto_inicio_nombre || 'Punto de inicio', descripcion || ''],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.status(201).json({ 
-        id: this.lastID, 
-        nombre,
-        mensaje: 'Ruta creada exitosamente' 
-      });
-    }
-  );
-});
-
-// POST - Calcular y optimizar ruta con clientes
-router.post('/:id/calcular-ruta', async (req, res) => {
-  const { cliente_ruts } = req.body;
-  
-  if (!cliente_ruts || cliente_ruts.length === 0) {
-    res.status(400).json({ error: 'Se requieren al menos un cliente' });
-    return;
-  }
+// POST - Recalcular ruta existente (actualizar distancias y orden cuando cambian coordenadas de clientes)
+router.post('/:id/recalcular', async (req, res) => {
+  const rutaId = req.params.id;
 
   try {
     // Obtener ruta
-    db.get('SELECT * FROM rutas WHERE id = ?', [req.params.id], async (err, ruta) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      if (!ruta) {
-        res.status(404).json({ mensaje: 'Ruta no encontrada' });
-        return;
-      }
+    db.get(
+      `SELECT r.*, m.numero as movil_numero, m.conductor 
+       FROM rutas r 
+       LEFT JOIN moviles m ON r.movil_id = m.id 
+       WHERE r.id = ?`,
+      [rutaId],
+      async (err, ruta) => {
+        if (err || !ruta) {
+          res.status(404).json({ error: 'Ruta no encontrada' });
+          return;
+        }
 
-      try {
-        // Obtener coordenadas de clientes
-        const placeholders = cliente_ruts.map(() => '?').join(',');
+        // Obtener paradas actuales de la ruta
         db.all(
-          `SELECT * FROM clientes WHERE rut IN (${placeholders})`,
-          cliente_ruts,
-          async (err, clientes) => {
-            if (err) {
-              res.status(500).json({ error: err.message });
+          `SELECT pr.*, c.razon_social, c.direccion, c.latitud, c.longitud
+           FROM paradas_ruta pr
+           JOIN clientes c ON pr.cliente_rut = c.rut
+           WHERE pr.ruta_id = ?`,
+          [rutaId],
+          async (err, paradas) => {
+            if (err || !paradas || paradas.length === 0) {
+              res.status(400).json({ error: 'No se encontraron paradas para esta ruta' });
               return;
             }
 
-            // Filtrar clientes con coordenadas válidas
-            const clientesValidos = clientes.filter(c => c.latitud && c.longitud);
-            
-            if (clientesValidos.length === 0) {
-              res.status(400).json({ error: 'Los clientes seleccionados no tienen coordenadas válidas' });
-              return;
-            }
+            try {
+              // Punto de inicio
+              const puntoInicio = {
+                latitud: parseFloat(process.env.PUNTO_INICIO_LATITUD) || -36.6068823,
+                longitud: parseFloat(process.env.PUNTO_INICIO_LONGITUD) || -72.1135498,
+                nombre: process.env.PUNTO_INICIO_NOMBRE || 'Almacén Central'
+              };
 
-            // Calcular distancias
-            const puntoInicio = {
-              latitud: ruta.punto_inicio_latitud,
-              longitud: ruta.punto_inicio_longitud
-            };
+              console.log(`♻️ Recalculando ruta ${rutaId}...`);
 
-            const distancias = await calcularDistancias(puntoInicio, clientesValidos);
-            const ordenados = ordenarPorDistancia(distancias);
+              // Recalcular distancias con datos actuales de clientes
+              const distancias = await calcularDistancias(puntoInicio, paradas);
+              console.log(`📏 Distancias recalculadas: ${JSON.stringify(distancias.map(d => `${d.cliente.razon_social}: ${d.distancia_km.toFixed(2)}km`))}`);
 
-            // Generar URL de Google Maps
-            const paradas = ordenados.map(d => ({
-              latitud: d.cliente.latitud,
-              longitud: d.cliente.longitud
-            }));
-            const urlMaps = generarURLGoogleMaps(puntoInicio, paradas);
+              // Ordenar por distancia
+              const parasdasOrdenadas = ordenarPorDistancia(distancias);
+              console.log(`📍 Orden optimizado: ${parasdasOrdenadas.map(p => p.cliente.razon_social).join(' → ')}`);
 
-            // Guardar paradas en BD
-            db.run('BEGIN TRANSACTION', (err) => {
-              if (err) {
-                res.status(500).json({ error: err.message });
-                return;
-              }
+              // Generar nueva URL
+              const paradas_url = parasdasOrdenadas.map(d => ({
+                latitud: d.cliente.latitud,
+                longitud: d.cliente.longitud,
+                nombre: d.cliente.razon_social
+              }));
+              const url_maps = generarURLGoogleMapsMobile(puntoInicio, paradas_url);
+              console.log(`🗺️ URL nueva: ${url_maps.substring(0, 100)}...`);
 
-              // Primero eliminar paradas anteriores
-              db.run('DELETE FROM paradas_ruta WHERE ruta_id = ?', [req.params.id], (err) => {
+              // Actualizar paradas con nuevas distancias y orden en transacción
+              db.run('BEGIN TRANSACTION', (err) => {
                 if (err) {
-                  db.run('ROLLBACK');
                   res.status(500).json({ error: err.message });
                   return;
                 }
 
-                // Insertar nuevas paradas
-                let pendientes = ordenados.length;
-                ordenados.forEach((item, index) => {
-                  db.run(
-                    `INSERT INTO paradas_ruta (ruta_id, cliente_rut, orden, distancia_km) 
-                     VALUES (?, ?, ?, ?)`,
-                    [req.params.id, item.cliente.rut, index + 1, item.distancia_km],
-                    (err) => {
-                      pendientes--;
-                      if (err) {
-                        db.run('ROLLBACK');
-                        res.status(500).json({ error: err.message });
-                        return;
-                      }
+                // Borrar paradas antiguas
+                db.run(`DELETE FROM paradas_ruta WHERE ruta_id = ?`, [rutaId], (err) => {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    res.status(500).json({ error: err.message });
+                    return;
+                  }
 
-                      if (pendientes === 0) {
-                        db.run('COMMIT', (err) => {
-                          if (err) {
+                  let completadas = 0;
+                  let responseEnviada = false;
+
+                  // Insertar paradas nuevas con nuevo orden
+                  parasdasOrdenadas.forEach((parada, index) => {
+                    const distancia_km = parada.distancia_km || 0;
+                    const duracion_min = parada.duracion_min || 0;
+                    // Usar cliente_rut (del DB) en lugar de rut
+                    const clienteRut = parada.cliente.cliente_rut || parada.cliente.rut;
+
+                    db.run(
+                      `INSERT INTO paradas_ruta (ruta_id, cliente_rut, orden, distancia_km, duracion_min)
+                       VALUES (?, ?, ?, ?, ?)`,
+                      [rutaId, clienteRut, index + 1, distancia_km, duracion_min],
+                      (err) => {
+                        completadas++;
+                        if (err) {
+                          if (!responseEnviada) {
+                            responseEnviada = true;
+                            db.run('ROLLBACK');
                             res.status(500).json({ error: err.message });
-                            return;
                           }
-                          
-                          res.json({
-                            ruta_id: req.params.id,
-                            paradas: ordenados.map((d, i) => ({
-                              orden: i + 1,
-                              cliente_rut: d.cliente.rut,
-                              razon_social: d.cliente.razon_social,
-                              direccion: d.cliente.direccion,
-                              distancia_km: d.distancia_km.toFixed(2),
-                              duracion_min: d.duracion_min.toFixed(0)
-                            })),
-                            urlMaps,
-                            distancia_total_km: ordenados.reduce((sum, d) => sum + d.distancia_km, 0).toFixed(2)
-                          });
-                        });
+                          return;
+                        }
+
+                        // Si todas las paradas se insertaron, actualizar URL
+                        if (completadas === parasdasOrdenadas.length && !responseEnviada) {
+                          db.run(
+                            `UPDATE rutas SET url_maps = ? WHERE id = ?`,
+                            [url_maps, rutaId],
+                            (err) => {
+                              if (err) {
+                                if (!responseEnviada) {
+                                  responseEnviada = true;
+                                  db.run('ROLLBACK');
+                                  res.status(500).json({ error: err.message });
+                                }
+                                return;
+                              }
+
+                              db.run('COMMIT', (err) => {
+                                if (err) {
+                                  if (!responseEnviada) {
+                                    responseEnviada = true;
+                                    res.status(500).json({ error: err.message });
+                                  }
+                                  return;
+                                }
+
+                                if (!responseEnviada) {
+                                  responseEnviada = true;
+                                  console.log(`✅ Ruta ${rutaId} recalculada exitosamente`);
+                                  res.json({
+                                    mensaje: 'Ruta recalculada exitosamente',
+                                    ruta_id: rutaId,
+                                    paradas_count: parasdasOrdenadas.length,
+                                    paradas: parasdasOrdenadas.map((d, i) => ({
+                                      orden: i + 1,
+                                      cliente_rut: d.cliente.cliente_rut || d.cliente.rut,
+                                      razon_social: d.cliente.razon_social,
+                                      direccion: d.cliente.direccion,
+                                      distancia_km: d.distancia_km.toFixed(2),
+                                      duracion_min: (d.duracion_min || 0).toFixed(0)
+                                    })),
+                                    url_maps
+                                  });
+                                }
+                              });
+                            }
+                          );
+                        }
                       }
-                    }
-                  );
+                    );
+                  });
                 });
               });
-            });
+            } catch (error) {
+              res.status(500).json({ error: 'Error al recalcular: ' + error.message });
+            }
           }
         );
-      } catch (error) {
-        res.status(500).json({ error: error.message });
       }
-    });
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
-
-// DELETE - Eliminar ruta
-router.delete('/:id', (req, res) => {
-  db.run('BEGIN TRANSACTION', (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
-    // Eliminar paradas primero
-    db.run('DELETE FROM paradas_ruta WHERE ruta_id = ?', [req.params.id], (err) => {
-      if (err) {
-        db.run('ROLLBACK');
-        res.status(500).json({ error: err.message });
-        return;
-      }
-
-      // Luego eliminar ruta
-      db.run('DELETE FROM rutas WHERE id = ?', [req.params.id], function(err) {
-        if (err) {
-          db.run('ROLLBACK');
-          res.status(500).json({ error: err.message });
-          return;
-        }
-
-        if (this.changes === 0) {
-          db.run('ROLLBACK');
-          res.status(404).json({ mensaje: 'Ruta no encontrada' });
-          return;
-        }
-
-        db.run('COMMIT', (err) => {
-          if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-          }
-          res.json({ mensaje: 'Ruta eliminada exitosamente' });
-        });
-      });
-    });
-  });
 });
 
 module.exports = router;
