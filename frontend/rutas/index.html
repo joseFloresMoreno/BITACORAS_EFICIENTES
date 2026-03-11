@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creación y Gestión de Rutas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container-main {
+            max-width: 1400px;
+            margin-top: 30px;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        .btn-success, .btn-warning, .btn-danger, .btn-info {
+            border-radius: 5px;
+        }
+        .table {
+            font-size: 14px;
+        }
+        .alert {
+            border-radius: 10px;
+            border: none;
+        }
+        .cliente-item {
+            background-color: #f0f0f0;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+        }
+        .cliente-seleccionado {
+            background-color: #d4edff;
+            border-left-color: #0d6efd;
+        }
+        .parada-item {
+            background-color: #e8f4f8;
+            padding: 12px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            border-left: 4px solid #17a2b8;
+        }
+        .cliente-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/menu/index.html">🚗 Bitácoras de Viajes</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/clientes/index.html">🏢 Clientes</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="">🚗 Rutas</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/moviles/index.html">🚙 Móviles</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-main">
+        <div id="alertas"></div>
+
+        <!-- Sección de Crear Ruta -->
+        <div class="row mb-4">
+            <div class="col-lg-5">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">➕ Crear Nueva Ruta</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="formRuta">
+                            <!-- Nombre Ruta -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Nombre de Ruta</strong></label>
+                                <input type="text" class="form-control" id="nombre_ruta" placeholder="Ej: Ruta Centro" required>
+                            </div>
+
+                            <!-- Seleccionar Móvil -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Asignar a Móvil</strong></label>
+                                <select class="form-select" id="movil_id">
+                                    <option value="">Sin asignar (agregar después)</option>
+                                </select>
+                            </div>
+
+                            <!-- Descripción -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Descripción</strong></label>
+                                <textarea class="form-control" id="descripcion" rows="2" placeholder="Detalles de la ruta (opcional)"></textarea>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">Crear Ruta</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección de Selección de Clientes -->
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">👥 Seleccionar Clientes para la Ruta</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted"><small>Selecciona los clientes que serán incluidos en esta ruta. Se optimizará el orden automáticamente.</small></p>
+                        
+                        <!-- Buscador de clientes -->
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente por RUT o razón social...">
+                        </div>
+
+                        <!-- Lista de clientes disponibles -->
+                        <div class="cliente-list" id="clientesDisponibles">
+                            <p class="text-muted">Cargando clientes...</p>
+                        </div>
+
+                        <!-- Clientes seleccionados para esta ruta -->
+                        <div class="mt-3">
+                            <h6>Clientes Seleccionados: <span id="countSeleccionados" class="badge bg-success">0</span></h6>
+                            <div id="clientesSeleccionadosRuta" class="cliente-list bg-light"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de Rutas Existentes -->
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">📍 Rutas Existentes</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Nombre</th>
+                                <th>Móvil Asignado</th>
+                                <th>Fecha</th>
+                                <th>Paradas</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablasRutas">
+                            <tr><td colspan="5" class="text-center text-muted">Cargando rutas...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para ver detalles de ruta -->
+        <div class="modal fade" id="modalDetallesRuta" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Detalles de Ruta</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="detallesRutaContent"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                        <button type="button" class="btn btn-primary" id="btnCompartirRuta">
+                            📲 Copiar Link para Compartir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        let clientesDisponibles = [];
+        let clientesSeleccionados = [];
+        let rutaActual = null;
+
+        // --- INICIALIZACIÓN ---
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarMoviles();
+            cargarClientes();
+            cargarRutas();
+            configurarBuscador();
+        });
+
+        document.getElementById('formRuta').addEventListener('submit', crearRuta);
+
+        // --- FUNCIONES PRINCIPALES ---
+        async function cargarMoviles() {
+            try {
+                const response = await fetch(`${API_URL}/moviles`);
+                const moviles = await response.json();
+                const select = document.getElementById('movil_id');
+                
+                moviles.forEach(movil => {
+                    const option = document.createElement('option');
+                    option.value = movil.id;
+                    option.textContent = `${movil.numero} - ${movil.conductor}`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                mostrarAlerta('Error al cargar móviles: ' + error.message, 'warning');
+            }
+        }
+
+        async function cargarClientes() {
+            try {
+                const response = await fetch(`${API_URL}/clientes`);
+                clientesDisponibles = await response.json();
+                renderizarClientes(clientesDisponibles);
+            } catch (error) {
+                mostrarAlerta('Error al cargar clientes: ' + error.message, 'danger');
+            }
+        }
+
+        function renderizarClientes(clientes) {
+            const contenedor = document.getElementById('clientesDisponibles');
+            contenedor.innerHTML = '';
+
+            if (clientes.length === 0) {
+                contenedor.innerHTML = '<p class="text-muted">No hay clientes registrados</p>';
+                return;
+            }
+
+            clientes.forEach(cliente => {
+                const item = document.createElement('div');
+                item.className = `cliente-item ${clientesSeleccionados.some(c => c.rut === cliente.rut) ? 'cliente-seleccionado' : ''}`;
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>${cliente.razon_social} (${cliente.rut})</span>
+                        <small class="text-muted">${cliente.direccion}</small>
+                    </div>
+                `;
+                item.onclick = () => toggleCliente(cliente);
+                contenedor.appendChild(item);
+            });
+        }
+
+        function configurarBuscador() {
+            document.getElementById('buscarCliente').addEventListener('input', (e) => {
+                const termino = e.target.value.toLowerCase();
+                const filtrados = clientesDisponibles.filter(c => 
+                    c.razon_social.toLowerCase().includes(termino) || 
+                    c.rut.includes(termino)
+                );
+                renderizarClientes(filtrados);
+            });
+        }
+
+        function toggleCliente(cliente) {
+            const index = clientesSeleccionados.findIndex(c => c.rut === cliente.rut);
+            if (index === -1) {
+                clientesSeleccionados.push(cliente);
+            } else {
+                clientesSeleccionados.splice(index, 1);
+            }
+            actualizarListadoSeleccionados();
+            renderizarClientes(clientesDisponibles);
+        }
+
+        function actualizarListadoSeleccionados() {
+            document.getElementById('countSeleccionados').textContent = clientesSeleccionados.length;
+            
+            const contenedor = document.getElementById('clientesSeleccionadosRuta');
+            if (clientesSeleccionados.length === 0) {
+                contenedor.innerHTML = '<p class="text-muted text-center">Selecciona clientes</p>';
+                return;
+            }
+
+            contenedor.innerHTML = clientesSeleccionados.map((cliente, index) => `
+                <div class="cliente-item cliente-seleccionado">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>${index + 1}. ${cliente.razon_social} (${cliente.rut})</span>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="eliminarClienteSeleccionado('${cliente.rut}')">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function eliminarClienteSeleccionado(rut) {
+            clientesSeleccionados = clientesSeleccionados.filter(c => c.rut !== rut);
+            actualizarListadoSeleccionados();
+            renderizarClientes(clientesDisponibles);
+        }
+
+        async function crearRuta(e) {
+            e.preventDefault();
+
+            if (clientesSeleccionados.length === 0) {
+                mostrarAlerta('Selecciona al menos un cliente', 'warning');
+                return;
+            }
+
+            const ruta = {
+                nombre: document.getElementById('nombre_ruta').value,
+                movil_id: document.getElementById('movil_id').value || null,
+                cliente_ruts: clientesSeleccionados.map(c => c.rut),
+                descripcion: document.getElementById('descripcion').value
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/rutas`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ruta)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    mostrarAlerta('✅ Ruta creada exitosamente', 'success');
+                    document.getElementById('formRuta').reset();
+                    clientesSeleccionados = [];
+                    actualizarListadoSeleccionados();
+                    cargarRutas();
+                    
+                    // Copiar link automáticamente
+                    copiarAlPortapapeles(data.urlMaps);
+                    mostrarAlerta('📋 Link de Google Maps copiado al portapapeles', 'info');
+                } else {
+                    mostrarAlerta('Error: ' + (data.error || 'No se pudo crear la ruta'), 'danger');
+                }
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+            }
+        }
+
+        async function cargarRutas() {
+            try {
+                const response = await fetch(`${API_URL}/rutas`);
+                const rutas = await response.json();
+                
+                const tbody = document.getElementById('tablasRutas');
+                tbody.innerHTML = '';
+
+                if (rutas.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay rutas registradas</td></tr>';
+                    return;
+                }
+
+                rutas.forEach(ruta => {
+                    const tr = document.createElement('tr');
+                    const fecha = new Date(ruta.creado_en).toLocaleDateString('es-CL');
+                    tr.innerHTML = `
+                        <td><strong>${ruta.id}</strong></td>
+                        <td>${ruta.nombre}</td>
+                        <td>${ruta.movil_numero ? ruta.movil_numero + ' - ' + ruta.conductor : 'Sin asignar'}</td>
+                        <td>${fecha}</td>
+                        <td><span class="badge bg-info">0</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="verDetalles(${ruta.id})">👁️ Ver</button>
+                            <button class="btn btn-sm btn-danger" onclick="eliminarRuta(${ruta.id})">🗑️ Eliminar</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                mostrarAlerta('Error al cargar rutas: ' + error.message, 'danger');
+            }
+        }
+
+        async function verDetalles(rutaId) {
+            try {
+                const response = await fetch(`${API_URL}/rutas/${rutaId}`);
+                const ruta = await response.json();
+                rutaActual = ruta;
+
+                console.log('🚗 Ruta cargada:', ruta);
+
+                let html = `
+                    <h6>Ruta: ${ruta.nombre}</h6>
+                    <p><strong>Móvil:</strong> ${ruta.movil_numero ? ruta.movil_numero + ' - ' + ruta.conductor : 'Sin asignar'}</p>
+                    <p><strong>Total Distancia:</strong> ${ruta.paradas ? ruta.paradas.reduce((sum, p) => sum + parseFloat(p.distancia_km || 0), 0).toFixed(2) : '0'} km</p>
+                    
+                    <h6 class="mt-3">Paradas Optimizadas:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr><th>#</th><th>Cliente</th><th>Dirección</th><th>Distancia (km)</th><th>Duración (min)</th></tr>
+                            </thead>
+                            <tbody>
+                                ${ruta.paradas ? ruta.paradas.map(p => `
+                                    <tr>
+                                        <td>${p.orden}</td>
+                                        <td>${p.razon_social}</td>
+                                        <td>${p.direccion}</td>
+                                        <td>${p.distancia_km}</td>
+                                        <td>${p.duracion_min}</td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="5">Sin paradas</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    ${ruta.url_maps ? `
+                        <div class="alert alert-info mt-3">
+                            <strong>🗺️ Link de Google Maps disponible</strong><br>
+                            <small class="text-break"><code>${ruta.url_maps}</code></small>
+                        </div>
+                    ` : `
+                        <div class="alert alert-warning mt-3">
+                            <strong>⚠️ No hay URL para esta ruta</strong>
+                        </div>
+                    `}
+                `;
+                
+                document.getElementById('detallesRutaContent').innerHTML = html;
+                const modal = new bootstrap.Modal(document.getElementById('modalDetallesRuta'));
+                modal.show();
+            } catch (error) {
+                mostrarAlerta('Error al cargar detalles: ' + error.message, 'danger');
+                console.error(error);
+            }
+        }
+
+        document.getElementById('btnCompartirRuta').addEventListener('click', () => {
+            if (rutaActual && rutaActual.url_maps) {
+                copiarAlPortapapeles(rutaActual.url_maps);
+                mostrarAlerta('📋 Link copiado al portapapeles', 'success');
+            } else {
+                mostrarAlerta('❌ No hay URL disponible para esta ruta', 'warning');
+            }
+        });
+
+        function copiarAlPortapapeles(texto) {
+            navigator.clipboard.writeText(texto).catch(err => 
+                console.error('Error al copiar:', err)
+            );
+        }
+
+        async function eliminarRuta(id) {
+            if (!confirm('¿Estás seguro de que deseas eliminar esta ruta?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/rutas/${id}`, { method: 'DELETE' });
+                
+                if (response.ok) {
+                    mostrarAlerta('Ruta eliminada exitosamente', 'success');
+                    cargarRutas();
+                } else {
+                    mostrarAlerta('Error al eliminar ruta', 'danger');
+                }
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+            }
+        }
+
+        function mostrarAlerta(mensaje, tipo) {
+            const alertas = document.getElementById('alertas');
+            alertas.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+                ${mensaje}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+            setTimeout(() => { alertas.innerHTML = ''; }, 5000);
+        }
+    </script>
+</body>
+</html>

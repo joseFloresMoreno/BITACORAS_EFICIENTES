@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración de Clientes</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container-main {
+            max-width: 1000px;
+            margin-top: 30px;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        .btn-success, .btn-warning, .btn-danger {
+            border-radius: 5px;
+        }
+        .table {
+            font-size: 14px;
+        }
+        .alert {
+            border-radius: 10px;
+            border: none;
+        }
+        #mapaEdicion {
+            height: 300px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .coordenadas-info {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .coordenadas-info code {
+            background-color: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/menu/index.html">📍 Bitácoras de Viajes</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="">🏢 Clientes</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/rutas/index.html">🚗 Rutas</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/moviles/index.html">🚙 Móviles</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container container-main">
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <h1 class="mb-3">Administración de Clientes</h1>
+            </div>
+        </div>
+
+        <div id="alertas"></div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">➕ Crear Nuevo Cliente</h5>
+            </div>
+            <div class="card-body">
+                <form id="formCliente">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label for="rut" class="form-label">RUT</label>
+                                    <input type="text" class="form-control" id="rut" placeholder="11222333-4" required>
+                                    <small class="form-text text-muted">Formato: XXXXXXXX-X</small>
+                                </div>
+                                <div class="col-md-12 mb-3">
+                                    <label for="razon_social" class="form-label">Razón Social</label>
+                                    <input type="text" class="form-control" id="razon_social" placeholder="Nombre de la Empresa" required>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label for="region" class="form-label">Región</label>
+                                    <select class="form-select" id="region" required onchange="actualizarComunas()">
+                                        <option value="">Selecciona una región</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-12 mb-3">
+                                    <label for="comuna" class="form-label">Comuna</label>
+                                    <select class="form-select" id="comuna" required disabled>
+                                        <option value="">Selecciona una región primero</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="direccion" class="form-label">Dirección <small class="text-danger">*Escribe para buscar en el mapa</small></label>
+                                <input type="text" class="form-control" id="direccion" placeholder="Calle Principal 123" required>
+                            </div>
+                            <div id="coordenadasCreacion" style="display:none;"></div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Latitud</label>
+                                    <input type="number" class="form-control" id="latitud" step="0.000001" readonly>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Longitud</label>
+                                    <input type="number" class="form-control" id="longitud" step="0.000001" readonly>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" placeholder="contacto@example.com">
+                            </div>
+                            <div class="mb-3">
+                                <label for="telefono" class="form-label">Teléfono</label>
+                                <input type="tel" class="form-control" id="telefono" placeholder="+56 9 1234 5678">
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-success btn-lg" id="btnSubmit">Crear Cliente</button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Mapa OSM (Vista prévia)</label>
+                            <div id="mapaCreacion" style="height: 400px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Lista de Clientes</h5>
+            </div>
+            <div class="card-body">
+                <div id="listadoClientes" class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>RUT</th>
+                                <th>Razón Social</th>
+                                <th>Dirección</th>
+                                <th>Región</th>
+                                <th>Comuna</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-clientes">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Cargando clientes...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        let regionesYComunas = [];
+        let clienteEnEdicion = null;
+        let mapaEdicion = null;
+        let markerEdicion = null;
+        let mapaCreacion = null;
+        let markerCreacion = null;
+        let timeoutGeocodificacion = null;
+        let timeoutGeocodificacionCreacion = null;
+
+        // Funciones para validar RUT
+        function validarRUT(rut) {
+            if (!rut) return false;
+            rut = rut.toString().toUpperCase().replace(/\s/g, '').replace(/\./g, '').replace(/-/g, '');
+            if (!/^\d{7,8}[0-9K]$/.test(rut)) return false;
+            
+            const rutNumeros = rut.slice(0, -1);
+            const digitoVerificador = rut.slice(-1);
+            let suma = 0;
+            let multiplicador = 2;
+            
+            for (let i = rutNumeros.length - 1; i >= 0; i--) {
+                suma += parseInt(rutNumeros[i]) * multiplicador;
+                multiplicador++;
+                if (multiplicador > 7) multiplicador = 2;
+            }
+            
+            const residuo = 11 - (suma % 11);
+            let digitoCalculado;
+            if (residuo === 11) digitoCalculado = '0';
+            else if (residuo === 10) digitoCalculado = 'K';
+            else digitoCalculado = residuo.toString();
+            
+            return digitoVerificador === digitoCalculado;
+        }
+
+        function formatearRUT(rut) {
+            if (!rut) return '';
+            rut = rut.toString().toUpperCase().replace(/\s/g, '').replace(/\./g, '').replace(/-/g, '');
+            if (rut.length < 2) return rut;
+            
+            const rutNumeros = rut.slice(0, -1);
+            const digitoVerificador = rut.slice(-1);
+            return `${rutNumeros}-${digitoVerificador}`;
+        }
+
+        // Cargar datos iniciales
+        document.addEventListener('DOMContentLoaded', async () => {
+            await cargarRegionesYComunas();
+            await cargarClientes();
+            
+            // Inicializar mapa de creación
+            setTimeout(() => {
+                inicializarMapaCreacion();
+            }, 100);
+            
+            document.getElementById('formCliente').addEventListener('submit', guardarCliente);
+            document.getElementById('region').addEventListener('change', () => {
+                actualizarComunas();
+                buscarCoordendasCreacion();
+            });
+            document.getElementById('comuna').addEventListener('change', () => {
+                buscarCoordendasCreacion();
+            });
+            document.getElementById('rut').addEventListener('blur', (e) => {
+                if (e.target.value && validarRUT(e.target.value)) {
+                    e.target.value = formatearRUT(e.target.value);
+                } else if (e.target.value) {
+                    mostrarAlerta('RUT inválido', 'warning');
+                }
+            });
+            
+            // Agregar evento para buscar coordenadas en tiempo real al escribir dirección
+            document.getElementById('direccion').addEventListener('input', (e) => {
+                clearTimeout(timeoutGeocodificacionCreacion);
+                timeoutGeocodificacionCreacion = setTimeout(() => {
+                    buscarCoordendasCreacion();
+                }, 800);
+            });
+        });
+
+        async function cargarRegionesYComunas() {
+            try {
+                const response = await fetch(`${API_URL}/clientes/data/regiones-comunas`);
+                regionesYComunas = await response.json();
+                
+                const selectRegion = document.getElementById('region');
+                selectRegion.innerHTML = '<option value="">Selecciona una región</option>';
+                
+                regionesYComunas.forEach(region => {
+                    const option = document.createElement('option');
+                    option.value = region.id;
+                    option.textContent = region.nombre;
+                    selectRegion.appendChild(option);
+                });
+            } catch (error) {
+                mostrarAlerta('Error al cargar regiones: ' + error.message, 'danger');
+            }
+        }
+
+        function actualizarComunas() {
+            const regionId = parseInt(document.getElementById('region').value);
+            const selectComuna = document.getElementById('comuna');
+            
+            selectComuna.innerHTML = '';
+            
+            if (!regionId) {
+                selectComuna.innerHTML = '<option value="">Selecciona una región primero</option>';
+                selectComuna.disabled = true;
+                return;
+            }
+            
+            const region = regionesYComunas.find(r => r.id === regionId);
+            if (region) {
+                selectComuna.disabled = false;
+                selectComuna.innerHTML = '<option value="">Selecciona una comuna</option>';
+                
+                // Ordenar comunas alfabéticamente
+                const comunasOrdenadas = [...region.comunas].sort();
+                comunasOrdenadas.forEach(comuna => {
+                    const option = document.createElement('option');
+                    option.value = comuna;
+                    option.textContent = comuna;
+                    selectComuna.appendChild(option);
+                });
+            }
+        }
+
+        async function cargarClientes() {
+            try {
+                const response = await fetch(`${API_URL}/clientes`);
+                const clientes = await response.json();
+                
+                const tbody = document.getElementById('tbody-clientes');
+                tbody.innerHTML = '';
+
+                if (!Array.isArray(clientes) || clientes.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No hay clientes registrados</td></tr>';
+                    return;
+                }
+
+                clientes.forEach(cliente => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${cliente.rut}</strong></td>
+                            <td>${cliente.razon_social}</td>
+                            <td>${cliente.direccion}</td>
+                            <td>${cliente.region}</td>
+                            <td>${cliente.comuna}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" onclick="verDetalles('${cliente.rut}')">📍 Detalles</button>
+                                <button class="btn btn-sm btn-warning" onclick="editarClienteConMapa('${cliente.rut}')">✏️ Editar</button>
+                                <button class="btn btn-sm btn-danger" onclick="eliminarCliente('${cliente.rut}')">Eliminar</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (error) {
+                mostrarAlerta('Error al cargar clientes: ' + error.message, 'danger');
+            }
+        }
+
+        async function editarCliente(rut) {
+            try {
+                const response = await fetch(`${API_URL}/clientes/${rut}`);
+                const cliente = await response.json();
+                
+                clienteEnEdicion = rut;
+                document.getElementById('rut').value = cliente.rut;
+                document.getElementById('razon_social').value = cliente.razon_social;
+                document.getElementById('direccion').value = cliente.direccion;
+                document.getElementById('email').value = cliente.email || '';
+                document.getElementById('telefono').value = cliente.telefono || '';
+                
+                // Seleccionar región
+                document.getElementById('region').value = regionesYComunas.find(r => r.nombre === cliente.region)?.id || '';
+                actualizarComunas();
+                
+                // Seleccionar comuna
+                document.getElementById('comuna').value = cliente.comuna;
+                
+                document.getElementById('rut').disabled = true;
+                document.getElementById('btnSubmit').textContent = 'Actualizar Cliente';
+                document.querySelector('.card-header h5').textContent = 'Editar Cliente';
+                
+                document.querySelector('.card-header').scrollIntoView({ behavior: 'smooth' });
+            } catch (error) {
+                mostrarAlerta('Error al cargar cliente: ' + error.message, 'danger');
+            }
+        }
+
+        async function guardarCliente(e) {
+            e.preventDefault();
+
+            const rut = document.getElementById('rut').value;
+            const razon_social = document.getElementById('razon_social').value;
+            const region = document.getElementById('region').value;
+            const comuna = document.getElementById('comuna').value;
+            const direccion = document.getElementById('direccion').value;
+            const email = document.getElementById('email').value;
+            const telefono = document.getElementById('telefono').value;
+            const latitud = parseFloat(document.getElementById('latitud').value) || null;
+            const longitud = parseFloat(document.getElementById('longitud').value) || null;
+
+            if (!clienteEnEdicion && !validarRUT(rut)) {
+                mostrarAlerta('RUT inválido', 'danger');
+                return;
+            }
+
+            if (!region || !comuna) {
+                mostrarAlerta('Debes seleccionar región y comuna', 'danger');
+                return;
+            }
+
+            try {
+                let rutFormateado = formatearRUT(rut);
+                const regionNombre = regionesYComunas.find(r => r.id == region)?.nombre || region;
+                
+                let response;
+                if (clienteEnEdicion) {
+                    response = await fetch(`${API_URL}/clientes/${rutFormateado}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ razon_social, region: regionNombre, comuna, direccion, email, telefono })
+                    });
+                } else {
+                    response = await fetch(`${API_URL}/clientes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            rut: rutFormateado, 
+                            razon_social, 
+                            region: regionNombre, 
+                            comuna, 
+                            direccion, 
+                            email, 
+                            telefono,
+                            latitud,
+                            longitud
+                        })
+                    });
+                }
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    mostrarAlerta(clienteEnEdicion ? 'Cliente actualizado exitosamente' : 'Cliente creado exitosamente', 'success');
+                    resetearFormulario();
+                    cargarClientes();
+                } else {
+                    mostrarAlerta('Error: ' + (data.error || 'No se pudo guardar el cliente'), 'danger');
+                }
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+            }
+        }
+
+        function resetearFormulario() {
+            clienteEnEdicion = null;
+            document.getElementById('formCliente').reset();
+            document.getElementById('rut').disabled = false;
+            document.getElementById('region').value = '';
+            document.getElementById('comuna').value = '';
+            document.getElementById('comuna').disabled = true;
+            document.getElementById('latitud').value = '';
+            document.getElementById('longitud').value = '';
+            document.getElementById('btnSubmit').textContent = 'Crear Cliente';
+            document.querySelector('.card-header h5').textContent = '➕ Crear Nuevo Cliente';
+            document.getElementById('coordenadasCreacion').style.display = 'none';
+            if (markerCreacion && mapaCreacion) {
+                mapaCreacion.removeLayer(markerCreacion);
+                markerCreacion = null;
+            }
+            if (mapaCreacion) {
+                mapaCreacion.setView([-36.3161, -72.2355], 13);
+            }
+        }
+
+        function mostrarAlerta(mensaje, tipo) {
+            const alertas = document.getElementById('alertas');
+            alertas.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+                ${mensaje}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+            setTimeout(() => { alertas.innerHTML = ''; }, 5000);
+        }
+
+        async function eliminarCliente(rut) {
+            if (!confirm('¿Estás seguro?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/clientes/${rut}`, { method: 'DELETE' });
+                if (response.ok) {
+                    mostrarAlerta('Cliente eliminado exitosamente', 'success');
+                    cargarClientes();
+                } else {
+                    mostrarAlerta('Error al eliminar cliente', 'danger');
+                }
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+            }
+        }
+
+        async function verDetalles(rut) {
+            try {
+                const response = await fetch(`${API_URL}/clientes/${rut}`);
+                const cliente = await response.json();
+                
+                // Crear contenido del modal
+                const detalles = `
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <strong>RUT:</strong><br>${cliente.rut}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>Razón Social:</strong><br>${cliente.razon_social}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <strong>Dirección:</strong><br>${cliente.direccion}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <strong>Región:</strong><br>${cliente.region}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>Comuna:</strong><br>${cliente.comuna}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <strong>Email:</strong><br>${cliente.email || 'No especificado'}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>Teléfono:</strong><br>${cliente.telefono || 'No especificado'}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <strong>📍 Latitud:</strong><br>
+                            <code>${cliente.latitud ? cliente.latitud.toFixed(6) : '❌ Sin coordenadas'}</code>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>📍 Longitud:</strong><br>
+                            <code>${cliente.longitud ? cliente.longitud.toFixed(6) : '❌ Sin coordenadas'}</code>
+                        </div>
+                    </div>
+                    ${cliente.latitud && cliente.longitud ? `
+                        <div class="alert alert-success">
+                            <strong>✅ Coordenadas disponibles</strong><br>
+                            Este cliente puede ser incluido en rutas optimizadas.
+                        </div>
+                    ` : `
+                        <div class="alert alert-warning">
+                            <strong>⚠️ Sin coordenadas geocodificadas</strong><br>
+                            Las coordenadas se calculan automáticamente al guardar. 
+                            <button type="button" class="btn btn-sm btn-primary mt-2" id="btnBuscarCoordenadas" onclick="buscarYGuardarCoordenadas('${rut}')">
+                                🔍 Buscar Coordenadas Ahora
+                            </button>
+                        </div>
+                    `}
+                `;
+                
+                document.getElementById('modalDetallesContent').innerHTML = detalles;
+                const modal = new bootstrap.Modal(document.getElementById('modalDetalles'));
+                modal.show();
+            } catch (error) {
+                mostrarAlerta('Error al cargar detalles: ' + error.message, 'danger');
+            }
+        }
+
+        async function buscarYGuardarCoordenadas(rut) {
+            const btn = document.getElementById('btnBuscarCoordenadas');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Buscando...';
+
+            try {
+                const response = await fetch(`${API_URL}/clientes/${rut}/geocodificar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    mostrarAlerta('✅ ' + data.mensaje, 'success');
+                    // Recargar detalles del cliente
+                    setTimeout(() => verDetalles(rut), 1500);
+                } else {
+                    mostrarAlerta('❌ ' + (data.error || 'Error al buscar coordenadas'), 'danger');
+                    btn.disabled = false;
+                    btn.innerHTML = '🔍 Buscar Coordenadas Ahora';
+                }
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+                btn.disabled = false;
+                btn.innerHTML = '🔍 Buscar Coordenadas Ahora';
+            }
+        }
+
+        function editarClienteConMapa(rut) {
+            try {
+                // Cargar datos del cliente
+                fetch(`${API_URL}/clientes/${rut}`)
+                    .then(r => r.json())
+                    .then(cliente => {
+                        // Llenar select de región
+                        const selectRegion = document.getElementById('editRegion');
+                        selectRegion.innerHTML = '<option value="">Selecciona una región</option>';
+                        regionesYComunas.forEach(region => {
+                            const option = document.createElement('option');
+                            option.value = region.id;
+                            option.textContent = region.nombre;
+                            selectRegion.appendChild(option);
+                        });
+
+                        // Llenar formulario de edición
+                        document.getElementById('editRut').value = cliente.rut;
+                        document.getElementById('editRazonSocial').value = cliente.razon_social;
+                        document.getElementById('editDireccion').value = cliente.direccion;
+                        document.getElementById('editEmail').value = cliente.email || '';
+                        document.getElementById('editTelefono').value = cliente.telefono || '';
+                        document.getElementById('editLatitud').value = cliente.latitud || '';
+                        document.getElementById('editLongitud').value = cliente.longitud || '';
+                        
+                        // Seleccionar región y comuna
+                        const regionId = regionesYComunas.find(r => r.nombre === cliente.region)?.id;
+                        document.getElementById('editRegion').value = regionId || '';
+                        actualizarComunasEdicion();
+                        setTimeout(() => {
+                            document.getElementById('editComuna').value = cliente.comuna;
+                        }, 100);
+                        
+                        // Inicializar mapa
+                        setTimeout(() => {
+                            inicializarMapaEdicion(cliente.latitud, cliente.longitud, cliente.direccion);
+                            
+                            // Agregar eventos para buscar coordenadas cuando cambie dirección, región o comuna
+                            document.getElementById('editDireccion').addEventListener('input', (e) => {
+                                clearTimeout(timeoutGeocodificacion);
+                                timeoutGeocodificacion = setTimeout(() => {
+                                    buscarCoordenadas();
+                                }, 800);
+                            });
+                            
+                            document.getElementById('editRegion').addEventListener('change', () => {
+                                actualizarComunasEdicion();
+                                buscarCoordenadas();
+                            });
+                            
+                            document.getElementById('editComuna').addEventListener('change', () => {
+                                buscarCoordenadas();
+                            });
+                        }, 100);
+                        
+                        // Mostrar modal
+                        new bootstrap.Modal(document.getElementById('modalEdicionCliente')).show();
+                    })
+                    .catch(err => mostrarAlerta('Error al cargar cliente: ' + err.message, 'danger'));
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+            }
+        }
+
+        function actualizarComunasEdicion() {
+            const regionId = parseInt(document.getElementById('editRegion').value);
+            const selectComuna = document.getElementById('editComuna');
+            
+            selectComuna.innerHTML = '';
+            
+            if (!regionId) {
+                selectComuna.innerHTML = '<option value="">Selecciona una región primero</option>';
+                selectComuna.disabled = true;
+                return;
+            }
+            
+            const region = regionesYComunas.find(r => r.id === regionId);
+            if (region) {
+                selectComuna.disabled = false;
+                selectComuna.innerHTML = '<option value="">Selecciona una comuna</option>';
+                
+                const comunasOrdenadas = [...region.comunas].sort();
+                comunasOrdenadas.forEach(comuna => {
+                    const option = document.createElement('option');
+                    option.value = comuna;
+                    option.textContent = comuna;
+                    selectComuna.appendChild(option);
+                });
+            }
+        }
+
+        function inicializarMapaEdicion(lat = null, lon = null, direccion = '') {
+            // Si el mapa ya existe, destruirlo
+            if (mapaEdicion) {
+                mapaEdicion.remove();
+                mapaEdicion = null;
+            }
+
+            // Coordenadas por defecto (Los Ángeles, Chile)
+            const defaultLat = lat || -36.3161;
+            const defaultLon = lon || -72.2355;
+
+            // Crear mapa
+            mapaEdicion = L.map('mapaEdicion').setView([defaultLat, defaultLon], 13);
+
+            // Agregar capa de OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(mapaEdicion);
+
+            // Agregar marcador
+            if (lat && lon) {
+                markerEdicion = L.marker([lat, lon]).addTo(mapaEdicion).bindPopup(direccion);
+            }
+
+            // Refrescar mapa
+            setTimeout(() => mapaEdicion.invalidateSize(), 200);
+        }
+
+        async function buscarCoordenadas() {
+            const direccion = document.getElementById('editDireccion').value;
+            const regionId = parseInt(document.getElementById('editRegion').value);
+            const comuna = document.getElementById('editComuna').value;
+
+            // Construir dirección completa
+            if (!direccion || !regionId || !comuna || direccion.trim().length < 3) {
+                document.getElementById('coordenadasEncontradas').style.display = 'none';
+                return;
+            }
+
+            const region = regionesYComunas.find(r => r.id === regionId)?.nombre || '';
+            const direccionCompleta = `${direccion}, ${comuna}, ${region}`;
+
+            try {
+                console.log(`🔍 Buscando: ${direccionCompleta}`);
+                const response = await fetch(`${API_URL}/clientes/geocodificar/search/${encodeURIComponent(direccion)}?ciudad=${encodeURIComponent(comuna)}`);
+                const data = await response.json();
+
+                if (data.latitud && data.longitud) {
+                    // Actualizar coordenadas
+                    document.getElementById('editLatitud').value = data.latitud;
+                    document.getElementById('editLongitud').value = data.longitud;
+
+                    // Actualizar mapa
+                    if (mapaEdicion) {
+                        mapaEdicion.setView([data.latitud, data.longitud], 15);
+                        
+                        if (markerEdicion) {
+                            mapaEdicion.removeLayer(markerEdicion);
+                        }
+                        markerEdicion = L.marker([data.latitud, data.longitud])
+                            .addTo(mapaEdicion)
+                            .bindPopup(direccionCompleta)
+                            .openPopup();
+                    }
+
+                    // Mostrar información de coordenadas
+                    const infoDiv = document.getElementById('coordenadasEncontradas');
+                    infoDiv.innerHTML = `
+                        <div class="coordenadas-info">
+                            <strong>✅ Ubicación encontrada:</strong><br>
+                            <small><code>${direccionCompleta}</code></small><br>
+                            <small>Latitud: <code>${data.latitud.toFixed(6)}</code></small><br>
+                            <small>Longitud: <code>${data.longitud.toFixed(6)}</code></small>
+                        </div>
+                    `;
+                    infoDiv.style.display = 'block';
+                } else {
+                    const infoDiv = document.getElementById('coordenadasEncontradas');
+                    infoDiv.innerHTML = `
+                        <div class="alert alert-warning">
+                            <small>⚠️ No se encontró: <code>${direccionCompleta}</code></small>
+                        </div>
+                    `;
+                    infoDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error buscando coordenadas:', error);
+            }
+        }
+
+        async function guardarClienteEdicion() {
+            try {
+                const rut = document.getElementById('editRut').value;
+                const razon_social = document.getElementById('editRazonSocial').value;
+                const region = document.getElementById('editRegion').value;
+                const comuna = document.getElementById('editComuna').value;
+                const direccion = document.getElementById('editDireccion').value;
+                const email = document.getElementById('editEmail').value;
+                const telefono = document.getElementById('editTelefono').value;
+                const latitud = parseFloat(document.getElementById('editLatitud').value) || null;
+                const longitud = parseFloat(document.getElementById('editLongitud').value) || null;
+
+                if (!region || !comuna || !direccion) {
+                    mostrarAlerta('Por favor completa todos los campos requeridos', 'warning');
+                    return;
+                }
+
+                const regionNombre = regionesYComunas.find(r => r.id == region)?.nombre || region;
+
+                const response = await fetch(`${API_URL}/clientes/${rut}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        razon_social,
+                        region: regionNombre,
+                        comuna,
+                        direccion,
+                        email,
+                        telefono,
+                        latitud,
+                        longitud
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    mostrarAlerta('✅ Cliente actualizado exitosamente', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('modalEdicionCliente')).hide();
+                    cargarClientes();
+                } else {
+                    mostrarAlerta('Error: ' + (data.error || 'No se pudo actualizar'), 'danger');
+                }
+            } catch (error) {
+                mostrarAlerta('Error: ' + error.message, 'danger');
+            }
+        }
+
+        function inicializarMapaCreacion(lat = null, lon = null) {
+            // Si el mapa ya existe, destruirlo
+            if (mapaCreacion) {
+                mapaCreacion.remove();
+                mapaCreacion = null;
+            }
+
+            // Coordenadas por defecto (Los Ángeles, Chile)
+            const defaultLat = lat || -36.3161;
+            const defaultLon = lon || -72.2355;
+
+            // Crear mapa
+            mapaCreacion = L.map('mapaCreacion').setView([defaultLat, defaultLon], 13);
+
+            // Agregar capa de OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(mapaCreacion);
+
+            // Refrescar mapa
+            setTimeout(() => mapaCreacion.invalidateSize(), 200);
+        }
+
+        async function buscarCoordendasCreacion() {
+            const direccion = document.getElementById('direccion').value;
+            const regionId = parseInt(document.getElementById('region').value);
+            const comuna = document.getElementById('comuna').value;
+
+            // Construir dirección completa
+            if (!direccion || !regionId || !comuna || direccion.trim().length < 3) {
+                document.getElementById('coordenadasCreacion').style.display = 'none';
+                return;
+            }
+
+            const region = regionesYComunas.find(r => r.id === regionId)?.nombre || '';
+            const direccionCompleta = `${direccion}, ${comuna}, ${region}`;
+
+            try {
+                console.log(`🔍 Buscando: ${direccionCompleta}`);
+                const response = await fetch(`${API_URL}/clientes/geocodificar/search/${encodeURIComponent(direccion)}?ciudad=${encodeURIComponent(comuna)}`);
+                const data = await response.json();
+
+                if (data.latitud && data.longitud) {
+                    // Actualizar coordenadas
+                    document.getElementById('latitud').value = data.latitud;
+                    document.getElementById('longitud').value = data.longitud;
+
+                    // Actualizar mapa
+                    if (mapaCreacion) {
+                        mapaCreacion.setView([data.latitud, data.longitud], 15);
+                        
+                        if (markerCreacion) {
+                            mapaCreacion.removeLayer(markerCreacion);
+                        }
+                        markerCreacion = L.marker([data.latitud, data.longitud])
+                            .addTo(mapaCreacion)
+                            .bindPopup(direccionCompleta)
+                            .openPopup();
+                    }
+
+                    // Mostrar información de coordenadas
+                    const infoDiv = document.getElementById('coordenadasCreacion');
+                    infoDiv.innerHTML = `
+                        <div class="coordenadas-info">
+                            <strong>✅ Ubicación encontrada:</strong><br>
+                            <small><code>${direccionCompleta}</code></small><br>
+                            <small>Latitud: <code>${data.latitud.toFixed(6)}</code></small><br>
+                            <small>Longitud: <code>${data.longitud.toFixed(6)}</code></small>
+                        </div>
+                    `;
+                    infoDiv.style.display = 'block';
+                } else {
+                    const infoDiv = document.getElementById('coordenadasCreacion');
+                    infoDiv.innerHTML = `
+                        <div class="alert alert-warning">
+                            <small>⚠️ No se encontró: <code>${direccionCompleta}</code></small>
+                        </div>
+                    `;
+                    infoDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error buscando coordenadas:', error);
+            }
+        }
+
+    </script>
+
+    <!-- Modal para detalles de cliente -->
+    <div class="modal fade" id="modalDetalles" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalles del Cliente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="modalDetallesContent">
+                    <!-- Contenido dinámico -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para edición de cliente con mapa -->
+    <div class="modal fade" id="modalEdicionCliente" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">✏️ Editar Cliente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">RUT</label>
+                                <input type="text" class="form-control" id="editRut" disabled>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Razón Social</label>
+                                <input type="text" class="form-control" id="editRazonSocial" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Región</label>
+                                <select class="form-select" id="editRegion" required onchange="actualizarComunasEdicion()">
+                                    <option value="">Selecciona una región</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Comuna</label>
+                                <select class="form-select" id="editComuna" required disabled>
+                                    <option value="">Selecciona una comuna</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Dirección <small class="text-danger">*Escribe para buscar en el mapa</small></label>
+                                <input type="text" class="form-control" id="editDireccion" required placeholder="Ej: Calle Principal 123">
+                            </div>
+                            <div id="coordenadasEncontradas" style="display:none;"></div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Latitud</label>
+                                    <input type="number" class="form-control" id="editLatitud" step="0.000001" readonly>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Longitud</label>
+                                    <input type="number" class="form-control" id="editLongitud" step="0.000001" readonly>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" id="editEmail">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Teléfono</label>
+                                <input type="tel" class="form-control" id="editTelefono">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Mapa OSM (Vista prévia)</label>
+                            <div id="mapaEdicion"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="guardarClienteEdicion()">💾 Guardar Cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
