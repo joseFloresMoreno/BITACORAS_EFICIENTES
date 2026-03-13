@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const { calcularDistancias, ordenarPorDistancia, generarURLGoogleMapsMobile } = require('../utils/googleMaps');
-const { geocodificarDireccion } = require('../utils/geocoding');
+const { geocodificarDireccion, obtenerDireccionDesdeCoord } = require('../utils/geocoding');
 
 // GET - Obtener todas las rutas
 router.get('/', (req, res) => {
@@ -66,10 +66,19 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // Obtener punto de inicio desde .env (coordenadas manuales)
+    // Obtener punto de inicio desde .env (REQUERIDO)
+    const latitudEnv = parseFloat(process.env.PUNTO_INICIO_LATITUD);
+    const longitudEnv = parseFloat(process.env.PUNTO_INICIO_LONGITUD);
+
+    if (isNaN(latitudEnv) || isNaN(longitudEnv)) {
+      console.error('❌ Error: PUNTO_INICIO_LATITUD o PUNTO_INICIO_LONGITUD no están definidas en .env');
+      res.status(500).json({ error: 'Las coordenadas iniciales no están configuradas en el servidor' });
+      return;
+    }
+
     const puntoInicio = {
-      latitud: parseFloat(process.env.PUNTO_INICIO_LATITUD) || -36.6068823,
-      longitud: parseFloat(process.env.PUNTO_INICIO_LONGITUD) || -72.1135498,
+      latitud: latitudEnv,
+      longitud: longitudEnv,
       nombre: process.env.PUNTO_INICIO_NOMBRE || 'Almacén Central'
     };
 
@@ -120,6 +129,11 @@ router.post('/', async (req, res) => {
           const urlMaps = generarURLGoogleMapsMobile(puntoInicio, paradas);
           console.log(`✅ URL generada:`, urlMaps.substring(0, 100) + '...');
 
+          // Obtener dirección del punto de inicio desde OSM
+          console.log(`📍 Obteniendo dirección del punto de inicio desde OpenStreetMap...`);
+          const direccionInicio = await obtenerDireccionDesdeCoord(puntoInicio.latitud, puntoInicio.longitud);
+          console.log(`📍 Dirección obtenida: ${direccionInicio || 'No disponible'}`);
+
           // Guardar ruta y paradas en transacción
           db.run('BEGIN TRANSACTION', (err) => {
             if (err) {
@@ -127,10 +141,10 @@ router.post('/', async (req, res) => {
               return;
             }
 
-            // Insertar ruta
+            // Insertar ruta con coordenadas iniciales y dirección
             db.run(
-              `INSERT INTO rutas (nombre, movil_id, descripcion, url_maps) VALUES (?, ?, ?, ?)`,
-              [nombre, movil_id || null, descripcion || '', urlMaps],
+              `INSERT INTO rutas (nombre, movil_id, descripcion, url_maps, punto_inicio_latitud, punto_inicio_longitud, punto_inicio_nombre, punto_inicio_direccion) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [nombre, movil_id || null, descripcion || '', urlMaps, puntoInicio.latitud, puntoInicio.longitud, puntoInicio.nombre, direccionInicio || ''],
               function(errRuta) {
                 if (errRuta) {
                   db.run('ROLLBACK');
@@ -243,7 +257,7 @@ router.post('/:id/recalcular', async (req, res) => {
   const rutaId = req.params.id;
 
   try {
-    // Obtener ruta
+    // Obtener ruta con coordenadas iniciales guardadas
     db.get(
       `SELECT r.*, m.numero as movil_numero, m.conductor 
        FROM rutas r 
@@ -270,16 +284,62 @@ router.post('/:id/recalcular', async (req, res) => {
             }
 
             try {
-              // Punto de inicio
+              // Punto de inicio actual desde .env (REQUERIDO - siempre obtener las coordenadas actuales)
+              const latitudEnv = parseFloat(process.env.PUNTO_INICIO_LATITUD);
+              const longitudEnv = parseFloat(process.env.PUNTO_INICIO_LONGITUD);
+
+              if (isNaN(latitudEnv) || isNaN(longitudEnv)) {
+                res.status(500).json({ error: 'Las coordenadas iniciales no están configuradas en el .env' });
+                return;
+              }
+
               const puntoInicio = {
-                latitud: parseFloat(process.env.PUNTO_INICIO_LATITUD) || -36.6068823,
-                longitud: parseFloat(process.env.PUNTO_INICIO_LONGITUD) || -72.1135498,
+                latitud: latitudEnv,
+                longitud: longitudEnv,
                 nombre: process.env.PUNTO_INICIO_NOMBRE || 'Almacén Central'
               };
 
-              console.log(`♻️ Recalculando ruta ${rutaId}...`);
+              // Punto de inicio guardado (del momento de creación de la ruta)
+              const puntoInicioPrevio = {
+                latitud: ruta.punto_inicio_latitud,
+                longitud: ruta.punto_inicio_longitud,
+                nombre: ruta.punto_inicio_nombre || 'Almacén Central'
+              };
 
-              // Recalcular distancias con datos actuales de clientes
+              // Detectar cambios en coordenadas iniciales
+              const coordenadasCambiaron = 
+                puntoInicio.latitud !== puntoInicioPrevio.latitud || 
+                puntoInicio.longitud !== puntoInicioPrevio.longitud;
+
+              let cambiosDetectados = {
+                coordenadasIniciales: false,
+                detallesCambios: null
+              };
+
+              if (coordenadasCambiaron) {
+                cambiosDetectados.coordenadasIniciales = true;
+                cambiosDetectados.detallesCambios = {
+                  mensaje: '🚨 Las coordenadas iniciales han cambiado',
+                  punto_anterior: {
+                    nombre: puntoInicioPrevio.nombre,
+                    latitud: puntoInicioPrevio.latitud,
+                    longitud: puntoInicioPrevio.longitud
+                  },
+                  punto_actual: {
+                    nombre: puntoInicio.nombre,
+                    latitud: puntoInicio.latitud,
+                    longitud: puntoInicio.longitud
+                  }
+                };
+                console.log(`🚨 ALERTA: Coordenadas iniciales cambiadas para ruta ${rutaId}`);
+                console.log(`   Anterior: ${puntoInicioPrevio.nombre} (${puntoInicioPrevio.latitud}, ${puntoInicioPrevio.longitud})`);
+                console.log(`   Actual: ${puntoInicio.nombre} (${puntoInicio.latitud}, ${puntoInicio.longitud})`);
+              }
+
+              console.log(`♻️ Recalculando ruta ${rutaId}...`);
+              console.log(coordenadasCambiaron ? `Usando coordenadas iniciales ACTUALES para recalculo` : `Coordenadas iniciales sin cambios`);
+
+              // Recalcular distancias con datos actuales de clientes y punto de inicio actual
               const distancias = await calcularDistancias(puntoInicio, paradas);
               console.log(`📏 Distancias recalculadas: ${JSON.stringify(distancias.map(d => `${d.cliente.razon_social}: ${d.distancia_km.toFixed(2)}km`))}`);
 
@@ -295,6 +355,11 @@ router.post('/:id/recalcular', async (req, res) => {
               }));
               const url_maps = generarURLGoogleMapsMobile(puntoInicio, paradas_url);
               console.log(`🗺️ URL nueva: ${url_maps.substring(0, 100)}...`);
+
+              // Obtener dirección actual del punto de inicio desde OSM
+              console.log(`📍 Obteniendo dirección actual del punto de inicio desde OpenStreetMap...`);
+              const direccionInicio = await obtenerDireccionDesdeCoord(puntoInicio.latitud, puntoInicio.longitud);
+              console.log(`📍 Dirección actual obtenida: ${direccionInicio || 'No disponible'}`);
 
               // Actualizar paradas con nuevas distancias y orden en transacción
               db.run('BEGIN TRANSACTION', (err) => {
@@ -336,11 +401,12 @@ router.post('/:id/recalcular', async (req, res) => {
                           return;
                         }
 
-                        // Si todas las paradas se insertaron, actualizar URL
+                        // Si todas las paradas se insertaron, actualizar URL y coordenadas iniciales
                         if (completadas === parasdasOrdenadas.length && !responseEnviada) {
+                          // Actualizar la ruta con URL recalculada, coordenadas iniciales actuales y dirección
                           db.run(
-                            `UPDATE rutas SET url_maps = ? WHERE id = ?`,
-                            [url_maps, rutaId],
+                            `UPDATE rutas SET url_maps = ?, punto_inicio_latitud = ?, punto_inicio_longitud = ?, punto_inicio_nombre = ?, punto_inicio_direccion = ? WHERE id = ?`,
+                            [url_maps, puntoInicio.latitud, puntoInicio.longitud, puntoInicio.nombre, direccionInicio || '', rutaId],
                             (err) => {
                               if (err) {
                                 if (!responseEnviada) {
@@ -367,6 +433,8 @@ router.post('/:id/recalcular', async (req, res) => {
                                     mensaje: 'Ruta recalculada exitosamente',
                                     ruta_id: rutaId,
                                     paradas_count: parasdasOrdenadas.length,
+                                    coordenadas_iniciales_cambiaron: cambiosDetectados.coordenadasIniciales,
+                                    detalles_cambios: cambiosDetectados.detallesCambios,
                                     paradas: parasdasOrdenadas.map((d, i) => ({
                                       orden: i + 1,
                                       cliente_rut: d.cliente.cliente_rut || d.cliente.rut,

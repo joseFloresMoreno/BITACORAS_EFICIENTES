@@ -455,6 +455,15 @@
                 let html = `
                     <h6>Ruta: ${ruta.nombre}</h6>
                     <p><strong>Móvil:</strong> ${ruta.movil_numero ? ruta.movil_numero + ' - ' + ruta.conductor : 'Sin asignar'}</p>
+                    
+                    <div class="alert alert-primary">
+                        <h6 class="mb-2">📍 Punto de Inicio Calculado</h6>
+                        <p class="mb-1"><strong>Nombre:</strong> ${ruta.punto_inicio_nombre || 'Almacén Central'}</p>
+                        <p class="mb-1"><strong>Dirección (OSM):</strong> ${ruta.punto_inicio_direccion || 'No disponible'}</p>
+                        <p class="mb-1"><strong>Latitud:</strong> ${ruta.punto_inicio_latitud || 'No disponible'}</p>
+                        <p class="mb-0"><strong>Longitud:</strong> ${ruta.punto_inicio_longitud || 'No disponible'}</p>
+                    </div>
+                    
                     <p><strong>Total Distancia:</strong> ${ruta.paradas ? ruta.paradas.reduce((sum, p) => sum + parseFloat(p.distancia_km || 0), 0).toFixed(2) : '0'} km</p>
                     
                     <h6 class="mt-3">Paradas Optimizadas:</h6>

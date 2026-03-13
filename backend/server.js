@@ -20,12 +20,19 @@ const usuariosRoutes = require('./routes/usuarios');
 const clientesRoutes = require('./routes/clientes');
 const movilesRoutes = require('./routes/moviles');
 const rutasRoutes = require('./routes/rutas');
+const devRoutes = require('./routes/dev');
 
 // Usar rutas
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/moviles', movilesRoutes);
 app.use('/api/rutas', rutasRoutes);
+
+// 🔧 Rutas de desarrollo (remover en producción)
+if (process.env.NODE_ENV !== 'production') {
+  console.log('🔧 Rutas de desarrollo habilitadas');
+  app.use('/api/dev', devRoutes);
+}
 
 // Ruta de prueba
 app.get('/api/health', (req, res) => {

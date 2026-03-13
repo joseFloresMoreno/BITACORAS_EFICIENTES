@@ -56,15 +56,6 @@ function initializeDatabase() {
     )
   `);
 
-  // Agregar columna nombre_movil si no existe (migración)
-  db.run(`
-    ALTER TABLE moviles ADD COLUMN nombre_movil TEXT
-  `, (err) => {
-    if (err && !err.message.includes('duplicate column name')) {
-      console.error('Error al agregar columna nombre_movil:', err.message);
-    }
-  });
-
   // Tabla de rutas (rediseñada)
   db.run(`
     CREATE TABLE IF NOT EXISTS rutas (
@@ -73,6 +64,10 @@ function initializeDatabase() {
       movil_id INTEGER,
       descripcion TEXT,
       url_maps TEXT,
+      punto_inicio_latitud REAL,
+      punto_inicio_longitud REAL,
+      punto_inicio_nombre TEXT,
+      punto_inicio_direccion TEXT,
       creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
       actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(movil_id) REFERENCES moviles(id)
