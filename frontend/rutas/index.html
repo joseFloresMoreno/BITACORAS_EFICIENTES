@@ -194,7 +194,7 @@
                             ♻️ Recalcular Ruta
                         </button>
                         <button type="button" class="btn btn-primary" id="btnCompartirRuta">
-                            📲 Copiar Link para Compartir
+                            � Copiar Link para Compartir
                         </button>
                     </div>
                 </div>
@@ -208,6 +208,11 @@
         let clientesDisponibles = [];
         let clientesSeleccionados = [];
         let rutaActual = null;
+
+        // Detectar si es dispositivo móvil
+        function esMovil() {
+            return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
 
         // --- INICIALIZACIÓN ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -375,6 +380,17 @@
                 rutas.forEach(ruta => {
                     const tr = document.createElement('tr');
                     const fecha = new Date(ruta.creado_en).toLocaleDateString('es-CL');
+                    
+                    // Generar botón de URL dinámicamente
+                    let botonUrl = '';
+                    if (esMovil()) {
+                        // En móvil: link directo a Google Maps
+                        botonUrl = `<a class="btn btn-sm btn-success" href="${ruta.url_maps}" title="Abrir en Maps" target="_blank">📲 Abrir</a>`;
+                    } else {
+                        // En desktop: copiar al portapapeles
+                        botonUrl = `<button class="btn btn-sm btn-success" title="Copiar link" onclick="copiarLinkRapido(${ruta.id})">📲</button>`;
+                    }
+                    
                     tr.innerHTML = `
                         <td><strong>${ruta.id}</strong></td>
                         <td>${ruta.nombre}</td>
@@ -383,7 +399,7 @@
                         <td><span class="badge bg-info">0</span></td>
                         <td>
                             <button class="btn btn-sm btn-warning" title="Recalcular" onclick="recalcularRutaRapido(${ruta.id})">♻️</button>
-                            <button class="btn btn-sm btn-success" title="Copiar link" onclick="copiarLinkRapido(${ruta.id})">📲</button>
+                            ${botonUrl}
                             <button class="btn btn-sm btn-info" onclick="verDetalles(${ruta.id})">👁️ Ver</button>
                             <button class="btn btn-sm btn-danger" onclick="eliminarRuta(${ruta.id})">🗑️ Eliminar</button>
                         </td>
@@ -426,7 +442,7 @@
             }
         }
 
-        // Copiar link de ruta sin abrir modal
+        // Copiar link de ruta sin abrir modal (usado en desktop)
         async function copiarLinkRapido(rutaId) {
             try {
                 const btn = event.target;
@@ -434,8 +450,15 @@
                 const ruta = await response.json();
 
                 if (ruta.url_maps) {
-                    navigator.clipboard.writeText(ruta.url_maps);
-                    mostrarAlerta('📋 Link copiado al portapapeles', 'success');
+                    if (esMovil()) {
+                        // En móvil: abrir directamente
+                        window.open(ruta.url_maps, '_blank');
+                        mostrarAlerta('📲 Abriendo en Google Maps...', 'info');
+                    } else {
+                        // En desktop: copiar
+                        navigator.clipboard.writeText(ruta.url_maps);
+                        mostrarAlerta('📋 Link copiado al portapapeles', 'success');
+                    }
                 } else {
                     mostrarAlerta('⚠️ Esta ruta no tiene URL disponible', 'warning');
                 }
@@ -499,6 +522,15 @@
                 `;
                 
                 document.getElementById('detallesRutaContent').innerHTML = html;
+                
+                // Cambiar label del botón según el dispositivo
+                const btnCompartir = document.getElementById('btnCompartirRuta');
+                if (esMovil()) {
+                    btnCompartir.innerHTML = '📲 Abrir en Google Maps';
+                } else {
+                    btnCompartir.innerHTML = '📋 Copiar Link para Compartir';
+                }
+                
                 const modal = new bootstrap.Modal(document.getElementById('modalDetallesRuta'));
                 modal.show();
             } catch (error) {
@@ -611,8 +643,15 @@
 
         document.getElementById('btnCompartirRuta').addEventListener('click', () => {
             if (rutaActual && rutaActual.url_maps) {
-                copiarAlPortapapeles(rutaActual.url_maps);
-                mostrarAlerta('📋 Link copiado al portapapeles', 'success');
+                if (esMovil()) {
+                    // En móvil: abrir directamente en Google Maps
+                    window.open(rutaActual.url_maps, '_blank');
+                    mostrarAlerta('📲 Abriendo en Google Maps...', 'info');
+                } else {
+                    // En desktop: copiar al portapapeles
+                    copiarAlPortapapeles(rutaActual.url_maps);
+                    mostrarAlerta('📋 Link copiado al portapapeles', 'success');
+                }
             } else {
                 mostrarAlerta('❌ No hay URL disponible para esta ruta', 'warning');
             }
