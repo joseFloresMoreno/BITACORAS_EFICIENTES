@@ -12,8 +12,12 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Determinar ruta del frontend
+const frontendPath = process.env.FRONTEND_PATH || path.join(__dirname, '../frontend');
+console.log(`📁 Sirviendo frontend desde: ${frontendPath}`);
+
 // Servir archivos estáticos del frontend
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(frontendPath));
 
 // Importar rutas
 const usuariosRoutes = require('./routes/usuarios');
@@ -37,6 +41,23 @@ if (process.env.NODE_ENV !== 'production') {
 // Ruta de prueba
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend funcionando correctamente' });
+});
+
+// Ruta raíz - Servir menú principal
+app.get('/', (req, res) => {
+  const menuPath = path.join(frontendPath, 'menu/index.html');
+  console.log(`✅ Sirviendo raíz desde: ${menuPath}`);
+  res.sendFile(menuPath, (err) => {
+    if (err) {
+      console.error('❌ Error al servir menu/index.html:', err);
+      res.status(500).json({ error: 'No se pudo cargar la página principal' });
+    }
+  });
+});
+
+// Fallback para rutas no encontradas (SPA routing)
+app.use((req, res) => {
+  res.status(404).json({ error: 'Ruta no encontrada' });
 });
 
 // Iniciar servidor
