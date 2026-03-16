@@ -1,8 +1,40 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
-const { calcularDistancias, ordenarPorDistancia, generarURLGoogleMapsMobile } = require('../utils/googleMaps');
+const { optimizarRutaNearestNeighbor, generarURLGoogleMapsMobile } = require('../utils/googleMaps');
 const { geocodificarDireccion, obtenerDireccionDesdeCoord } = require('../utils/geocoding');
+
+// 🔄 Sistema de rastreo de progreso para operaciones de cración de rutas
+const operacionesEnCurso = {};
+
+// Generar ID único para operaciones
+function generarIdOperacion() {
+  return `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Actualizar progreso de operación
+function actualizarProgreso(operacionId, estado, paso, totalPasos, mensaje) {
+  if (operacionesEnCurso[operacionId]) {
+    operacionesEnCurso[operacionId] = {
+      operacionId,
+      estado,
+      paso,
+      totalPasos,
+      mensaje,
+      timestamp: Date.now()
+    };
+  }
+}
+
+// Limpiar operaciones completadas hace más de 5 minutos
+setInterval(() => {
+  const ahora = Date.now();
+  Object.keys(operacionesEnCurso).forEach(id => {
+    if (ahora - operacionesEnCurso[id].timestamp > 5 * 60 * 1000) {
+      delete operacionesEnCurso[id];
+    }
+  });
+}, 60 * 1000); // Limpiar cada minuto
 
 // GET - Obtener todas las rutas
 router.get('/', (req, res) => {
@@ -56,6 +88,19 @@ router.get('/:id', (req, res) => {
   });
 });
 
+// GET - Obtener progreso de creación de ruta
+router.get('/progreso/:operacionId', (req, res) => {
+  const { operacionId } = req.params;
+  const progreso = operacionesEnCurso[operacionId];
+  
+  if (!progreso) {
+    res.status(404).json({ error: 'Operación no encontrada o expirada' });
+    return;
+  }
+  
+  res.json(progreso);
+});
+
 // POST - Crear nueva ruta con clientes (todo en un request)
 router.post('/', async (req, res) => {
   const { nombre, movil_id, cliente_ruts, descripcion } = req.body;
@@ -65,14 +110,34 @@ router.post('/', async (req, res) => {
     return;
   }
 
+  // Generar ID de operación y retornar inmediatamente
+  const operacionId = generarIdOperacion();
+  operacionesEnCurso[operacionId] = {
+    operacionId,
+    estado: 'iniciando',
+    paso: 1,
+    totalPasos: 5,
+    mensaje: '🚀 Iniciando creación de ruta...',
+    timestamp: Date.now()
+  };
+
+  // Retornar operacionId inmediatamente para que el frontend haga polling
+  res.json({ 
+    operacionId,
+    mensaje: 'Procesando creación de ruta. Puedes monitorear el progreso con el ID de operación.' 
+  });
+
+  // Procesar en background
   try {
+    actualizarProgreso(operacionId, 'validando', 1, 5, '📋 Validando datos...');
+    
     // Obtener punto de inicio desde .env (REQUERIDO)
     const latitudEnv = parseFloat(process.env.PUNTO_INICIO_LATITUD);
     const longitudEnv = parseFloat(process.env.PUNTO_INICIO_LONGITUD);
 
     if (isNaN(latitudEnv) || isNaN(longitudEnv)) {
       console.error('❌ Error: PUNTO_INICIO_LATITUD o PUNTO_INICIO_LONGITUD no están definidas en .env');
-      res.status(500).json({ error: 'Las coordenadas iniciales no están configuradas en el servidor' });
+      actualizarProgreso(operacionId, 'error', 1, 5, '❌ Error: Coordenadas iniciales no configuradas');
       return;
     }
 
@@ -91,12 +156,13 @@ router.post('/', async (req, res) => {
       cliente_ruts,
       async (err, clientes) => {
         if (err) {
-          res.status(500).json({ error: err.message });
+          console.error('❌ Error al obtener clientes:', err.message);
+          actualizarProgreso(operacionId, 'error', 2, 5, '❌ Error al obtener clientes');
           return;
         }
 
         if (clientes.length === 0) {
-          res.status(400).json({ error: 'Ninguno de los clientes existe en la base de datos' });
+          actualizarProgreso(operacionId, 'error', 2, 5, '❌ Ninguno de los clientes existe');
           return;
         }
 
@@ -104,22 +170,19 @@ router.post('/', async (req, res) => {
         const clientesValidos = clientes.filter(c => c.latitud && c.longitud);
         
         if (clientesValidos.length === 0) {
-          res.status(400).json({ 
-            error: 'Los clientes seleccionados no tienen coordenadas válidas. Por favor agrega latitud y longitud a los clientes.' 
-          });
+          actualizarProgreso(operacionId, 'error', 2, 5, '❌ Los clientes no tienen coordenadas válidas');
           return;
         }
 
         try {
-          // Calcular distancias
-          console.log(`📏 Calculando distancias para ${clientesValidos.length} clientes...`);
-          const distancias = await calcularDistancias(puntoInicio, clientesValidos);
-          console.log(`✅ Distancias calculadas:`, distancias.map(d => `${d.cliente.razon_social}: ${d.distancia_km.toFixed(2)}km`));
-          
-          const ordenados = ordenarPorDistancia(distancias);
-          console.log(`📍 Orden optimizado:`, ordenados.map(d => d.cliente.razon_social).join(' → '));
+          // Optimizar ruta con algoritmo Nearest Neighbor
+          actualizarProgreso(operacionId, 'optimizando', 2, 5, `⚙️ Optimizando ruta para ${clientesValidos.length} clientes...`);
+          console.log(`📏 Optimizando ruta para ${clientesValidos.length} clientes usando algoritmo Nearest Neighbor...`);
+          const ordenados = await optimizarRutaNearestNeighbor(puntoInicio, clientesValidos);
+          console.log(`✅ Ruta optimizada. Orden final:`, ordenados.map(d => d.cliente.razon_social).join(' → '));
 
           // Generar URL de Google Maps (compatible con móviles)
+          actualizarProgreso(operacionId, 'procesando', 3, 5, '🗺️ Generando URL de Google Maps...');
           const paradas = ordenados.map(d => ({
             latitud: d.cliente.latitud,
             longitud: d.cliente.longitud,
@@ -130,14 +193,17 @@ router.post('/', async (req, res) => {
           console.log(`✅ URL generada:`, urlMaps.substring(0, 100) + '...');
 
           // Obtener dirección del punto de inicio desde OSM
+          actualizarProgreso(operacionId, 'procesando', 4, 5, '📍 Obteniendo dirección del punto de inicio...');
           console.log(`📍 Obteniendo dirección del punto de inicio desde OpenStreetMap...`);
           const direccionInicio = await obtenerDireccionDesdeCoord(puntoInicio.latitud, puntoInicio.longitud);
           console.log(`📍 Dirección obtenida: ${direccionInicio || 'No disponible'}`);
 
           // Guardar ruta y paradas en transacción
+          actualizarProgreso(operacionId, 'guardando', 5, 5, '💾 Guardando ruta en la base de datos...');
           db.run('BEGIN TRANSACTION', (err) => {
             if (err) {
-              res.status(500).json({ error: err.message });
+              console.error('❌ Error al iniciar transacción:', err.message);
+              actualizarProgreso(operacionId, 'error', 5, 5, `❌ Error al guardar: ${err.message}`);
               return;
             }
 
@@ -148,7 +214,8 @@ router.post('/', async (req, res) => {
               function(errRuta) {
                 if (errRuta) {
                   db.run('ROLLBACK');
-                  res.status(500).json({ error: errRuta.message });
+                  console.error('❌ Error al insertar ruta:', errRuta.message);
+                  actualizarProgreso(operacionId, 'error', 5, 5, `❌ Error al guardar: ${errRuta.message}`);
                   return;
                 }
 
@@ -156,6 +223,8 @@ router.post('/', async (req, res) => {
 
                 // Insertar paradas
                 let pendientes = ordenados.length;
+                let erroresParadas = false;
+                
                 ordenados.forEach((item, index) => {
                   db.run(
                     `INSERT INTO paradas_ruta (ruta_id, cliente_rut, orden, distancia_km, duracion_min) 
@@ -165,33 +234,22 @@ router.post('/', async (req, res) => {
                       pendientes--;
                       if (errParada) {
                         db.run('ROLLBACK');
-                        res.status(500).json({ error: errParada.message });
+                        erroresParadas = true;
+                        console.error('❌ Error al insertar parada:', errParada.message);
+                        actualizarProgreso(operacionId, 'error', 5, 5, `❌ Error al guardar: ${errParada.message}`);
                         return;
                       }
 
-                      if (pendientes === 0) {
+                      if (pendientes === 0 && !erroresParadas) {
                         db.run('COMMIT', (errCommit) => {
                           if (errCommit) {
-                            res.status(500).json({ error: errCommit.message });
+                            console.error('❌ Error al hacer commit:', errCommit.message);
+                            actualizarProgreso(operacionId, 'error', 5, 5, `❌ Error al guardar: ${errCommit.message}`);
                             return;
                           }
                           
-                          res.status(201).json({
-                            ruta_id: rutaId,
-                            nombre,
-                            movil_id,
-                            paradas: ordenados.map((d, i) => ({
-                              orden: i + 1,
-                              cliente_rut: d.cliente.rut,
-                              razon_social: d.cliente.razon_social,
-                              direccion: d.cliente.direccion,
-                              distancia_km: d.distancia_km.toFixed(2),
-                              duracion_min: (d.duracion_min || 0).toFixed(0)
-                            })),
-                            urlMaps,
-                            distancia_total_km: ordenados.reduce((sum, d) => sum + d.distancia_km, 0).toFixed(2),
-                            mensaje: 'Ruta creada exitosamente'
-                          });
+                          console.log(`✅ Ruta ${rutaId} creada exitosamente`);
+                          actualizarProgreso(operacionId, 'completado', 5, 5, `✅ Ruta creada exitosamente (ID: ${rutaId})`);
                         });
                       }
                     }
@@ -201,12 +259,14 @@ router.post('/', async (req, res) => {
             );
           });
         } catch (error) {
-          res.status(500).json({ error: error.message });
+          console.error('❌ Error en la creación de ruta:', error.message);
+          actualizarProgreso(operacionId, 'error', 5, 5, `❌ Error: ${error.message}`);
         }
       }
     );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error general:', error.message);
+    actualizarProgreso(operacionId, 'error', 1, 5, `❌ Error: ${error.message}`);
   }
 });
 
@@ -339,13 +399,10 @@ router.post('/:id/recalcular', async (req, res) => {
               console.log(`♻️ Recalculando ruta ${rutaId}...`);
               console.log(coordenadasCambiaron ? `Usando coordenadas iniciales ACTUALES para recalculo` : `Coordenadas iniciales sin cambios`);
 
-              // Recalcular distancias con datos actuales de clientes y punto de inicio actual
-              const distancias = await calcularDistancias(puntoInicio, paradas);
-              console.log(`📏 Distancias recalculadas: ${JSON.stringify(distancias.map(d => `${d.cliente.razon_social}: ${d.distancia_km.toFixed(2)}km`))}`);
-
-              // Ordenar por distancia
-              const parasdasOrdenadas = ordenarPorDistancia(distancias);
-              console.log(`📍 Orden optimizado: ${parasdasOrdenadas.map(p => p.cliente.razon_social).join(' → ')}`);
+              // Recalcular ruta con algoritmo Nearest Neighbor
+              console.log(`📏 Optimizando ruta para ${paradas.length} clientes usando algoritmo Nearest Neighbor...`);
+              const parasdasOrdenadas = await optimizarRutaNearestNeighbor(puntoInicio, paradas);
+              console.log(`📍 Ruta optimizada. Orden nuevo: ${parasdasOrdenadas.map(p => p.cliente.razon_social).join(' → ')}`);
 
               // Generar nueva URL
               const paradas_url = parasdasOrdenadas.map(d => ({

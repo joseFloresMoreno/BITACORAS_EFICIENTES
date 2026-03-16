@@ -95,9 +95,129 @@ async function calcularDistancias(puntoInicio, clientes) {
   }
 }
 
-// Función para ordenar clientes por distancia
+// Función para ordenar clientes por distancia (ordenamiento simple por distancia inicial)
 function ordenarPorDistancia(distancias) {
   return distancias.sort((a, b) => a.distancia_km - b.distancia_km);
+}
+
+/**
+ * Algoritmo de Nearest Neighbor (Vecino más cercano) para optimizar rutas
+ * Evita saturar la API haciendo cálculos en batches
+ * 
+ * Algoritmo:
+ * 1. Comienza en el punto inicial
+ * 2. Encuentra el cliente más cercano al punto actual
+ * 3. Agrega ese cliente a la ruta
+ * 4. Repite desde el nuevo cliente hasta visitar todos
+ */
+async function optimizarRutaNearestNeighbor(puntoInicio, clientesOriginales) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  
+  if (!apiKey) {
+    console.warn('⚠️ Google Maps API Key no configurada. Usando ordenamiento simple');
+    return clientesOriginales.map(cliente => ({
+      cliente,
+      distancia_km: calcularDistanciaHaversine(
+        puntoInicio.latitud,
+        puntoInicio.longitud,
+        cliente.latitud,
+        cliente.longitud
+      ),
+      duracion_min: 0
+    }));
+  }
+
+  try {
+    const rutaOptimizada = [];
+    const clientesNoVisitados = [...clientesOriginales];
+    let puntoActual = puntoInicio;
+    let distanciaTotal = 0;
+
+    console.log(`🔄 Iniciando optimización con Nearest Neighbor (${clientesNoVisitados.length} clientes)...`);
+
+    // Iterar hasta que todos los clientes estén visitados
+    while (clientesNoVisitados.length > 0) {
+      console.log(`  📍 Buscando cliente más cercano a ${puntoActual.nombre} (${clientesNoVisitados.length} restantes)...`);
+
+      // Calcular distancias a todos los clientes no visitados
+      const destinos = clientesNoVisitados.map(cliente => 
+        `${cliente.latitud},${cliente.longitud}`
+      ).join('|');
+
+      const response = await axios.get('https://maps.googleapis.com/maps/api/distancematrix/json', {
+        params: {
+          origins: `${puntoActual.latitud},${puntoActual.longitud}`,
+          destinations: destinos,
+          key: apiKey,
+          units: 'metric'
+        }
+      });
+
+      if (response.data.status !== 'OK') {
+        console.warn(`⚠️ Google Maps retornó: ${response.data.status}`);
+        break;
+      }
+
+      // Encontrar el cliente más cercano
+      let clienteMasCercanoIndex = 0;
+      let distanciaMinima = Infinity;
+
+      response.data.rows[0].elements.forEach((elemento, index) => {
+        if (elemento.distance) {
+          const distanciaKm = elemento.distance.value / 1000;
+          if (distanciaKm < distanciaMinima) {
+            distanciaMinima = distanciaKm;
+            clienteMasCercanoIndex = index;
+          }
+        }
+      });
+
+      // Agregar el cliente más cercano a la ruta
+      const clienteSeleccionado = clientesNoVisitados[clienteMasCercanoIndex];
+      const durationMin = response.data.rows[0].elements[clienteMasCercanoIndex].duration 
+        ? response.data.rows[0].elements[clienteMasCercanoIndex].duration.value / 60 
+        : 0;
+
+      rutaOptimizada.push({
+        cliente: clienteSeleccionado,
+        distancia_km: distanciaMinima,
+        duracion_min: durationMin
+      });
+
+      distanciaTotal += distanciaMinima;
+      console.log(`  ✅ Agregado: ${clienteSeleccionado.razon_social} (${distanciaMinima.toFixed(2)}km)`);
+
+      // Actualizar el punto actual y remover el cliente visitado
+      puntoActual = {
+        latitud: clienteSeleccionado.latitud,
+        longitud: clienteSeleccionado.longitud,
+        nombre: clienteSeleccionado.razon_social
+      };
+      clientesNoVisitados.splice(clienteMasCercanoIndex, 1);
+
+      // Pequeña pausa para no saturar la API
+      if (clientesNoVisitados.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    console.log(`🎯 Ruta optimizada completada. Distancia total: ${distanciaTotal.toFixed(2)}km`);
+    return rutaOptimizada;
+
+  } catch (error) {
+    console.error('❌ Error al optimizar ruta con Nearest Neighbor:', error.message);
+    console.log('📍 Usando ordenamiento simple como fallback...');
+    return clientesOriginales.map(cliente => ({
+      cliente,
+      distancia_km: calcularDistanciaHaversine(
+        puntoInicio.latitud,
+        puntoInicio.longitud,
+        cliente.latitud,
+        cliente.longitud
+      ),
+      duracion_min: 0
+    }));
+  }
 }
 
 // Función para generar URL de Google Maps con múltiples paradas
@@ -156,6 +276,7 @@ function generarURLGoogleMapsMobile(puntoInicio, paradas) {
 module.exports = {
   calcularDistancias,
   ordenarPorDistancia,
+  optimizarRutaNearestNeighbor,
   generarURLGoogleMaps,
   generarURLGoogleMapsMobile
 };
