@@ -32,6 +32,26 @@
             border-radius: 10px;
             border: none;
         }
+
+        /* Mejora de visualización en móvil */
+        @media (max-width: 768px) {
+            .table {
+                font-size: 12px;
+            }
+            
+            .btn-acciones {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            
+            .btn-acciones .btn {
+                font-size: 13px;
+                padding: 8px 10px;
+                margin: 0;
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -159,9 +179,11 @@
                             <td>${movil.conductor || '-'}</td>
                             <td>${movil.telefono || '-'}</td>
                             <td>${movil.activo ? '<span class="badge bg-success">Activo</span>' : '<span class="badge bg-danger">Inactivo</span>'}</td>
-                            <td>
-                                <button class="btn btn-sm btn-warning" onclick="editarMovil(${movil.id})">✏️ Editar</button>
-                                <button class="btn btn-sm btn-danger" onclick="eliminarMovil(${movil.id})">Eliminar</button>
+                            <td class="btn-acciones-cell">
+                                <div class="btn-acciones">
+                                    <button class="btn btn-sm btn-warning" data-bs-toggle="tooltip" data-bs-title="Editar información del móvil" onclick="editarMovil(${movil.id})">✏️ Editar</button>
+                                    <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" data-bs-title="Eliminar móvil permanentemente" onclick="eliminarMovil(${movil.id})">🗑️ Eliminar</button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -169,6 +191,9 @@
             } catch (error) {
                 mostrarAlerta('Error al cargar móviles: ' + error.message, 'danger');
             }
+
+            // Inicializar tooltips después de cargar la tabla
+            inicializarTooltips();
         }
 
         async function editarMovil(id) {
@@ -241,6 +266,13 @@
             document.getElementById('patente').disabled = false;
             document.getElementById('btnSubmit').textContent = 'Agregar Móvil';
             document.querySelector('.card-header h5').textContent = '➕ Agregar Nuevo Móvil';
+        }
+
+        function inicializarTooltips() {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
         }
 
         function mostrarAlerta(mensaje, tipo) {

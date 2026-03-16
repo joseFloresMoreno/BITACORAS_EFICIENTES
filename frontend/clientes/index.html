@@ -50,6 +50,32 @@
             padding: 2px 6px;
             border-radius: 3px;
         }
+
+        /* Mejora de visualización en móvil */
+        @media (max-width: 768px) {
+            .table {
+                font-size: 12px;
+            }
+            
+            .btn-acciones {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            
+            .btn-acciones .btn {
+                font-size: 13px;
+                padding: 8px 10px;
+                margin: 0;
+                width: 100%;
+            }
+        }
+
+        /* Tooltips */
+        .bs-tooltip-auto[data-popper-placement^="top"] > .tooltip-arrow,
+        .bs-tooltip-top > .tooltip-arrow {
+            bottom: calc(-1 * var(--bs-tooltip-arrow-height));
+        }
     </style>
 </head>
 <body>
@@ -333,10 +359,12 @@
                             <td>${cliente.direccion}</td>
                             <td>${cliente.region}</td>
                             <td>${cliente.comuna}</td>
-                            <td>
-                                <button class="btn btn-sm btn-info" onclick="verDetalles('${cliente.rut}')">📍 Detalles</button>
-                                <button class="btn btn-sm btn-warning" onclick="editarClienteConMapa('${cliente.rut}')">✏️ Editar</button>
-                                <button class="btn btn-sm btn-danger" onclick="eliminarCliente('${cliente.rut}')">Eliminar</button>
+                            <td class="btn-acciones-cell">
+                                <div class="btn-acciones">
+                                    <button class="btn btn-sm btn-info" data-bs-toggle="tooltip" data-bs-title="Ver detalles del cliente" onclick="verDetalles('${cliente.rut}')">📍 Detalles</button>
+                                    <button class="btn btn-sm btn-warning" data-bs-toggle="tooltip" data-bs-title="Editar información del cliente" onclick="editarClienteConMapa('${cliente.rut}')">✏️ Editar</button>
+                                    <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" data-bs-title="Eliminar cliente permanentemente" onclick="eliminarCliente('${cliente.rut}')">🗑️ Eliminar</button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -344,6 +372,9 @@
             } catch (error) {
                 mostrarAlerta('Error al cargar clientes: ' + error.message, 'danger');
             }
+            
+            // Inicializar tooltips después de cargar la tabla
+            inicializarTooltips();
         }
 
         async function editarCliente(rut) {
@@ -460,6 +491,13 @@
             if (mapaCreacion) {
                 mapaCreacion.setView([-36.3161, -72.2355], 13);
             }
+        }
+
+        function inicializarTooltips() {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
         }
 
         function mostrarAlerta(mensaje, tipo) {

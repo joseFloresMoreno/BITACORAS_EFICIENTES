@@ -58,6 +58,26 @@
             border-radius: 5px;
             padding: 10px;
         }
+
+        /* Mejora de visualización en móvil */
+        @media (max-width: 768px) {
+            .table {
+                font-size: 12px;
+            }
+            
+            .btn-acciones {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            
+            .btn-acciones .btn {
+                font-size: 13px;
+                padding: 8px 10px;
+                margin: 0;
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -469,10 +489,10 @@
                     let botonUrl = '';
                     if (esMovil()) {
                         // En móvil: link directo a Google Maps
-                        botonUrl = `<a class="btn btn-sm btn-success" href="${ruta.url_maps}" title="Abrir en Maps" target="_blank">📲 Abrir</a>`;
+                        botonUrl = `<a class="btn btn-sm btn-success" data-bs-toggle="tooltip" data-bs-title="Abrir ruta en Google Maps" href="${ruta.url_maps}" target="_blank">📲 Abrir</a>`;
                     } else {
                         // En desktop: copiar al portapapeles
-                        botonUrl = `<button class="btn btn-sm btn-success" title="Copiar link" onclick="copiarLinkRapido(${ruta.id})">📲</button>`;
+                        botonUrl = `<button class="btn btn-sm btn-success" data-bs-toggle="tooltip" data-bs-title="Copiar link de Google Maps" onclick="copiarLinkRapido(${ruta.id})">📲</button>`;
                     }
                     
                     tr.innerHTML = `
@@ -481,11 +501,13 @@
                         <td>${ruta.movil_numero ? ruta.movil_numero + ' - ' + ruta.conductor : 'Sin asignar'}</td>
                         <td>${fecha}</td>
                         <td><span class="badge bg-info">0</span></td>
-                        <td>
-                            <button class="btn btn-sm btn-warning" title="Recalcular" onclick="recalcularRutaRapido(${ruta.id})">♻️</button>
-                            ${botonUrl}
-                            <button class="btn btn-sm btn-info" onclick="verDetalles(${ruta.id})">👁️ Ver</button>
-                            <button class="btn btn-sm btn-danger" onclick="eliminarRuta(${ruta.id})">🗑️ Eliminar</button>
+                        <td class="btn-acciones-cell">
+                            <div class="btn-acciones">
+                                <button class="btn btn-sm btn-warning" data-bs-toggle="tooltip" data-bs-title="Recalcular ruta con coordenadas actuales" onclick="recalcularRutaRapido(${ruta.id})">♻️</button>
+                                ${botonUrl}
+                                <button class="btn btn-sm btn-info" data-bs-toggle="tooltip" data-bs-title="Ver detalles de la ruta" onclick="verDetalles(${ruta.id})">👁️ Ver</button>
+                                <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" data-bs-title="Eliminar ruta permanentemente" onclick="eliminarRuta(${ruta.id})">🗑️ Eliminar</button>
+                            </div>
                         </td>
                     `;
                     tbody.appendChild(tr);
@@ -493,6 +515,9 @@
             } catch (error) {
                 mostrarAlerta('Error al cargar rutas: ' + error.message, 'danger');
             }
+
+            // Inicializar tooltips después de cargar la tabla
+            inicializarTooltips();
         }
 
         // Recalcular ruta sin abrir modal
@@ -762,6 +787,13 @@
             } catch (error) {
                 mostrarAlerta('Error: ' + error.message, 'danger');
             }
+        }
+
+        function inicializarTooltips() {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
         }
 
         function mostrarAlerta(mensaje, tipo) {
